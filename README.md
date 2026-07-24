@@ -1,6 +1,6 @@
 # GitHubClient
 
-GitHubClient is an iOS 17+ portfolio application for searching public GitHub
+GitHubClient is an iOS 26+ portfolio application for searching public GitHub
 repositories, viewing repository details and README content, and maintaining a
 persisted list of favorites.
 
