@@ -20,6 +20,4 @@ struct RepositorySearchViewState: Equatable, Sendable {
   var pagination: PaginationState = .idle
   var error: AppError?
   var isShowingCachedData: Bool = false
-
-  static let idle = RepositorySearchViewState()
 }

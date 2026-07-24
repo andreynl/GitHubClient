@@ -4,7 +4,7 @@ import Observation
 @MainActor
 @Observable
 final class SearchViewModel {
-  private(set) var state = RepositorySearchViewState.idle
+  private(set) var state = RepositorySearchViewState()
 
   let minimumQueryLength: Int
 
@@ -197,7 +197,7 @@ final class SearchViewModel {
     loadedPages.removeAll()
     pagesInFlight.removeAll()
     hasNextPage = false
-    state = .idle
+    state = RepositorySearchViewState()
   }
 
   private func cancelTasks() {
