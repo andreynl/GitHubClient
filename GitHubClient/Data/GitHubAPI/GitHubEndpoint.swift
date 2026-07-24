@@ -15,12 +15,19 @@ nonisolated struct GitHubEndpoint: Equatable, Sendable {
     )
   }
 
+  static func repositoryDetails(owner: String, name: String) -> GitHubEndpoint {
+    GitHubEndpoint(
+      path: "/repos/\(owner)/\(name)",
+      queryItems: []
+    )
+  }
+
   func urlRequest(baseURL: URL, accessToken: String?) throws -> URLRequest {
     guard var components = URLComponents(url: baseURL.appending(path: path), resolvingAgainstBaseURL: false) else {
       throw GitHubAPIError.invalidURL
     }
 
-    components.queryItems = queryItems
+    components.queryItems = queryItems.isEmpty ? nil : queryItems
 
     guard let url = components.url else {
       throw GitHubAPIError.invalidURL

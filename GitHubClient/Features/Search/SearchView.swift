@@ -29,12 +29,19 @@ struct SearchView: View {
       errorView(viewModel.state.error)
     case .loaded:
       ForEach(viewModel.state.items) { repository in
-        RepositorySummaryRow(repository: repository)
-          .onAppear {
-            if repository.id == viewModel.state.items.last?.id {
-              viewModel.loadNextPage()
-            }
+        NavigationLink(
+          value: AppRoute.repository(
+            owner: repository.owner.login,
+            name: repository.name
+          )
+        ) {
+          RepositorySummaryRow(repository: repository)
+        }
+        .onAppear {
+          if repository.id == viewModel.state.items.last?.id {
+            viewModel.loadNextPage()
           }
+        }
       }
 
       paginationContent

@@ -4,4 +4,9 @@ nonisolated protocol RepositoriesRepository: Sendable {
     page: Int,
     perPage: Int
   ) async throws -> RepositoryPage
+
+  func repositoryDetails(
+    owner: String,
+    name: String
+  ) async throws -> RepositoryDetails
 }

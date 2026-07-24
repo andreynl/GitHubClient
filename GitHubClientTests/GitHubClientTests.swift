@@ -351,13 +351,13 @@ struct GitHubClientTests {
   }
 }
 
-private struct HTTPResponse: Sendable {
+struct HTTPResponse: Sendable {
   let statusCode: Int
   let headers: [String: String]
   let data: Data
 }
 
-private final class MockURLProtocolStore: @unchecked Sendable {
+final class MockURLProtocolStore: @unchecked Sendable {
   typealias Handler = @Sendable (URLRequest) throws -> HTTPResponse
 
   private let handler: Handler
@@ -371,7 +371,7 @@ private final class MockURLProtocolStore: @unchecked Sendable {
   }
 }
 
-private func makeSession(store: MockURLProtocolStore) -> URLSession {
+func makeSession(store: MockURLProtocolStore) -> URLSession {
   let configuration = URLSessionConfiguration.ephemeral
   configuration.protocolClasses = [MockURLProtocol.self]
   configuration.timeoutIntervalForRequest = 5
@@ -443,7 +443,7 @@ private final class MockURLProtocol: URLProtocol, @unchecked Sendable {
   override func stopLoading() {}
 }
 
-private final class LockedCounter: @unchecked Sendable {
+final class LockedCounter: @unchecked Sendable {
   private let lock = NSLock()
   private var storage = 0
 
@@ -483,6 +483,10 @@ private final class MockRepositoriesRepository: RepositoriesRepository, @uncheck
       return storage.count
     }
     return try await handler(query, page, count)
+  }
+
+  func repositoryDetails(owner: String, name: String) async throws -> RepositoryDetails {
+    throw AppError.unknown("Repository details are not configured for this search test.")
   }
 }
 
