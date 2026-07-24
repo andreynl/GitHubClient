@@ -19,7 +19,7 @@ persisted list of favorites.
 
 ## Implementation
 
-- Swift 5 language mode
+- Swift 6 language mode
 - SwiftUI and the Observation framework
 - MVVM with folder-level Presentation, Domain, and Data boundaries
 - Repository protocols and constructor-based dependency injection
