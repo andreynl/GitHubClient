@@ -1,6 +1,6 @@
 # GitHubClient
 
-GitHubClient is an iOS 17+ portfolio application for searching public GitHub
+GitHubClient is an iOS 26+ portfolio application for searching public GitHub
 repositories, viewing repository details and README content, and maintaining a
 persisted list of favorites.
 
@@ -19,7 +19,7 @@ persisted list of favorites.
 
 ## Implementation
 
-- Swift 5 language mode
+- Swift 6 language mode
 - SwiftUI and the Observation framework
 - MVVM with folder-level Presentation, Domain, and Data boundaries
 - Repository protocols and constructor-based dependency injection
@@ -65,7 +65,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) and the accepted decisions under
 ## Requirements
 
 Validation for this revision uses Xcode 26.6 and an installed iOS Simulator
-runtime. The current project deployment target is iOS 17.0.
+runtime. The current project deployment target is iOS 26.0.
 
 ## Build
 
