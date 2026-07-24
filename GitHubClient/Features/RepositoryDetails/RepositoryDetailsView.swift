@@ -25,12 +25,54 @@ struct RepositoryDetailsView: View {
     }
     .navigationTitle(navigationTitle)
     .navigationBarTitleDisplayMode(.inline)
+    .toolbar {
+      if case .loaded(let details) = viewModel.state.primary {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button {
+            viewModel.toggleFavorite(repositoryID: details.id)
+          } label: {
+            if viewModel.favoritesAreLoaded {
+              Image(
+                systemName: viewModel.isFavorite(repositoryID: details.id)
+                  ? "star.fill"
+                  : "star"
+              )
+              .accessibilityHidden(true)
+            } else {
+              ProgressView()
+                .accessibilityHidden(true)
+            }
+          }
+          .disabled(!viewModel.favoritesAreLoaded)
+          .accessibilityLabel(favoriteAccessibilityLabel(details))
+          .accessibilityHint("Updates this repository's favorite status")
+          .accessibilityValue(
+            viewModel.isUpdatingFavorite(repositoryID: details.id)
+              ? "Saving"
+              : ""
+          )
+        }
+      }
+    }
     .onAppear {
       viewModel.load()
     }
     .onDisappear {
       viewModel.cancel()
     }
+    .task {
+      await viewModel.loadFavorites()
+    }
+  }
+
+  private func favoriteAccessibilityLabel(_ details: RepositoryDetails) -> String {
+    guard viewModel.favoritesAreLoaded else {
+      return "Loading favorite status for \(details.fullName)"
+    }
+
+    return viewModel.isFavorite(repositoryID: details.id)
+      ? "Remove \(details.fullName) from favorites"
+      : "Add \(details.fullName) to favorites"
   }
 
   private func detailsContent(_ details: RepositoryDetails) -> some View {

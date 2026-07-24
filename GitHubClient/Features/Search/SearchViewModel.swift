@@ -7,6 +7,7 @@ final class SearchViewModel {
   private(set) var state = RepositorySearchViewState()
 
   let minimumQueryLength: Int
+  let favoritesStore: FavoritesStore
 
   @ObservationIgnored private let repository: RepositoriesRepository
   @ObservationIgnored private let perPage: Int
@@ -20,11 +21,13 @@ final class SearchViewModel {
 
   init(
     repository: RepositoriesRepository,
+    favoritesStore: FavoritesStore,
     minimumQueryLength: Int = 3,
     perPage: Int = 30,
     debounceDuration: Duration = .milliseconds(350)
   ) {
     self.repository = repository
+    self.favoritesStore = favoritesStore
     self.minimumQueryLength = minimumQueryLength
     self.perPage = perPage
     self.debounceDuration = debounceDuration
@@ -33,6 +36,26 @@ final class SearchViewModel {
   deinit {
     searchTask?.cancel()
     paginationTask?.cancel()
+  }
+
+  func loadFavorites() async {
+    await favoritesStore.load()
+  }
+
+  var favoritesAreLoaded: Bool {
+    favoritesStore.isLoaded
+  }
+
+  func isFavorite(repositoryID: Int) -> Bool {
+    favoritesStore.isFavorite(repositoryID: repositoryID)
+  }
+
+  func isUpdatingFavorite(repositoryID: Int) -> Bool {
+    favoritesStore.isUpdating(repositoryID: repositoryID)
+  }
+
+  func toggleFavorite(repositoryID: Int) {
+    favoritesStore.toggle(repositoryID: repositoryID)
   }
 
   func updateQuery(_ query: String) {

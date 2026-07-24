@@ -7,7 +7,10 @@ struct ContentView: View {
   init(container: AppContainer = .live) {
     repositoriesRepository = container.repositoriesRepository
     _viewModel = State(
-      initialValue: SearchViewModel(repository: container.repositoriesRepository)
+      initialValue: SearchViewModel(
+        repository: container.repositoriesRepository,
+        favoritesStore: container.favoritesStore
+      )
     )
   }
 
@@ -21,7 +24,8 @@ struct ContentView: View {
               viewModel: RepositoryDetailsViewModel(
                 owner: owner,
                 name: name,
-                repository: repositoriesRepository
+                repository: repositoriesRepository,
+                favoritesStore: viewModel.favoritesStore
               )
             )
           }

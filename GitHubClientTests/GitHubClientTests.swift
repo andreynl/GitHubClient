@@ -268,7 +268,11 @@ struct GitHubClientTests {
     let repository = MockRepositoriesRepository { _, page, _ in
       RepositoryPage(items: [repositorySummary(id: page)], currentPage: page, hasNextPage: false, totalCount: 1)
     }
-    let viewModel = SearchViewModel(repository: repository, debounceDuration: .milliseconds(1))
+    let viewModel = SearchViewModel(
+      repository: repository,
+      favoritesStore: makeFavoritesStore(),
+      debounceDuration: .milliseconds(1)
+    )
 
     viewModel.updateQuery("swift")
     try await waitFor { viewModel.state.phase == .loaded }
@@ -284,7 +288,11 @@ struct GitHubClientTests {
     let repository = MockRepositoriesRepository { _, page, _ in
       RepositoryPage(items: [], currentPage: page, hasNextPage: false, totalCount: 0)
     }
-    let viewModel = SearchViewModel(repository: repository, debounceDuration: .milliseconds(1))
+    let viewModel = SearchViewModel(
+      repository: repository,
+      favoritesStore: makeFavoritesStore(),
+      debounceDuration: .milliseconds(1)
+    )
 
     viewModel.updateQuery("swift")
     try await waitFor { viewModel.state.phase == .empty }
@@ -302,7 +310,11 @@ struct GitHubClientTests {
       }
       return RepositoryPage(items: [repositorySummary(id: 1)], currentPage: 1, hasNextPage: false, totalCount: 1)
     }
-    let viewModel = SearchViewModel(repository: repository, debounceDuration: .milliseconds(1))
+    let viewModel = SearchViewModel(
+      repository: repository,
+      favoritesStore: makeFavoritesStore(),
+      debounceDuration: .milliseconds(1)
+    )
 
     viewModel.updateQuery("swift")
     try await waitFor { viewModel.state.phase == .failed }
@@ -321,6 +333,7 @@ struct GitHubClientTests {
     }
     let viewModel = SearchViewModel(
       repository: repository,
+      favoritesStore: makeFavoritesStore(),
       minimumQueryLength: 3,
       debounceDuration: .milliseconds(1)
     )
@@ -343,7 +356,11 @@ struct GitHubClientTests {
         totalCount: 1
       )
     }
-    let viewModel = SearchViewModel(repository: repository, debounceDuration: .milliseconds(50))
+    let viewModel = SearchViewModel(
+      repository: repository,
+      favoritesStore: makeFavoritesStore(),
+      debounceDuration: .milliseconds(50)
+    )
 
     viewModel.updateQuery("swift")
     viewModel.updateQuery("swiftui")
@@ -378,7 +395,11 @@ struct GitHubClientTests {
         totalCount: 1
       )
     }
-    let viewModel = SearchViewModel(repository: repository, debounceDuration: .milliseconds(1))
+    let viewModel = SearchViewModel(
+      repository: repository,
+      favoritesStore: makeFavoritesStore(),
+      debounceDuration: .milliseconds(1)
+    )
 
     viewModel.updateQuery("swift")
     try await Task.sleep(for: .milliseconds(10))
@@ -403,7 +424,11 @@ struct GitHubClientTests {
         totalCount: 1
       )
     }
-    let viewModel = SearchViewModel(repository: repository, debounceDuration: .milliseconds(1))
+    let viewModel = SearchViewModel(
+      repository: repository,
+      favoritesStore: makeFavoritesStore(),
+      debounceDuration: .milliseconds(1)
+    )
 
     viewModel.updateQuery("swift")
     try await waitFor { repository.callCount == 1 && viewModel.state.phase == .idle }
@@ -431,7 +456,11 @@ struct GitHubClientTests {
         totalCount: 1
       )
     }
-    let viewModel = SearchViewModel(repository: repository, debounceDuration: .milliseconds(1))
+    let viewModel = SearchViewModel(
+      repository: repository,
+      favoritesStore: makeFavoritesStore(),
+      debounceDuration: .milliseconds(1)
+    )
 
     viewModel.updateQuery("swift")
     try await waitFor { repository.callCount == 1 }
@@ -454,7 +483,11 @@ struct GitHubClientTests {
         totalCount: 2
       )
     }
-    let viewModel = SearchViewModel(repository: repository, debounceDuration: .milliseconds(1))
+    let viewModel = SearchViewModel(
+      repository: repository,
+      favoritesStore: makeFavoritesStore(),
+      debounceDuration: .milliseconds(1)
+    )
 
     viewModel.updateQuery("swift")
     try await waitFor { viewModel.state.phase == .loaded }
@@ -479,7 +512,11 @@ struct GitHubClientTests {
         totalCount: 2
       )
     }
-    let viewModel = SearchViewModel(repository: repository, debounceDuration: .milliseconds(1))
+    let viewModel = SearchViewModel(
+      repository: repository,
+      favoritesStore: makeFavoritesStore(),
+      debounceDuration: .milliseconds(1)
+    )
 
     viewModel.updateQuery("swift")
     try await waitFor { viewModel.state.phase == .loaded }
@@ -499,7 +536,11 @@ struct GitHubClientTests {
       }
       return RepositoryPage(items: [repositorySummary(id: 1)], currentPage: 1, hasNextPage: true, totalCount: 2)
     }
-    let viewModel = SearchViewModel(repository: repository, debounceDuration: .milliseconds(1))
+    let viewModel = SearchViewModel(
+      repository: repository,
+      favoritesStore: makeFavoritesStore(),
+      debounceDuration: .milliseconds(1)
+    )
 
     viewModel.updateQuery("swift")
     try await waitFor { viewModel.state.phase == .loaded }
@@ -529,7 +570,11 @@ struct GitHubClientTests {
         totalCount: 2
       )
     }
-    let viewModel = SearchViewModel(repository: repository, debounceDuration: .milliseconds(1))
+    let viewModel = SearchViewModel(
+      repository: repository,
+      favoritesStore: makeFavoritesStore(),
+      debounceDuration: .milliseconds(1)
+    )
 
     viewModel.updateQuery("swift")
     try await waitFor { viewModel.state.phase == .loaded }

@@ -8,6 +8,7 @@ final class RepositoryDetailsViewModel {
 
   let owner: String
   let name: String
+  let favoritesStore: FavoritesStore
 
   @ObservationIgnored private let repository: RepositoriesRepository
   @ObservationIgnored private var detailsTask: Task<Void, Never>?
@@ -18,16 +19,38 @@ final class RepositoryDetailsViewModel {
   init(
     owner: String,
     name: String,
-    repository: RepositoriesRepository
+    repository: RepositoriesRepository,
+    favoritesStore: FavoritesStore
   ) {
     self.owner = owner
     self.name = name
     self.repository = repository
+    self.favoritesStore = favoritesStore
   }
 
   deinit {
     detailsTask?.cancel()
     readmeTask?.cancel()
+  }
+
+  func loadFavorites() async {
+    await favoritesStore.load()
+  }
+
+  var favoritesAreLoaded: Bool {
+    favoritesStore.isLoaded
+  }
+
+  func isFavorite(repositoryID: Int) -> Bool {
+    favoritesStore.isFavorite(repositoryID: repositoryID)
+  }
+
+  func isUpdatingFavorite(repositoryID: Int) -> Bool {
+    favoritesStore.isUpdating(repositoryID: repositoryID)
+  }
+
+  func toggleFavorite(repositoryID: Int) {
+    favoritesStore.toggle(repositoryID: repositoryID)
   }
 
   func load() {

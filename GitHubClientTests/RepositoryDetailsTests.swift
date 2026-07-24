@@ -177,7 +177,7 @@ struct RepositoryDetailsTests {
     let repository = DetailsRepositoriesRepositoryStub { _, _, _ in
       repositoryDetails(id: 1)
     }
-    let viewModel = RepositoryDetailsViewModel(owner: "apple", name: "swift", repository: repository)
+    let viewModel = makeDetailsViewModel(repository: repository)
 
     #expect(viewModel.state == .idle)
     viewModel.load()
@@ -196,7 +196,7 @@ struct RepositoryDetailsTests {
       }
       return repositoryDetails(id: 2)
     }
-    let viewModel = RepositoryDetailsViewModel(owner: "apple", name: "swift", repository: repository)
+    let viewModel = makeDetailsViewModel(repository: repository)
 
     viewModel.load()
     #expect(viewModel.state.primary == .loading)
@@ -214,7 +214,7 @@ struct RepositoryDetailsTests {
       try await Task.sleep(for: .milliseconds(50))
       return repositoryDetails(id: 1)
     }
-    let viewModel = RepositoryDetailsViewModel(owner: "apple", name: "swift", repository: repository)
+    let viewModel = makeDetailsViewModel(repository: repository)
 
     viewModel.load()
     viewModel.load()
@@ -238,7 +238,7 @@ struct RepositoryDetailsTests {
       }
       return repositoryDetails(id: 2)
     }
-    let viewModel = RepositoryDetailsViewModel(owner: "apple", name: "swift", repository: repository)
+    let viewModel = makeDetailsViewModel(repository: repository)
 
     viewModel.load()
     try await waitForDetails { repository.callCount == 1 }
@@ -261,7 +261,7 @@ struct RepositoryDetailsTests {
       }
       return repositoryDetails(id: 2)
     }
-    let viewModel = RepositoryDetailsViewModel(owner: "apple", name: "swift", repository: repository)
+    let viewModel = makeDetailsViewModel(repository: repository)
 
     viewModel.load()
     try await waitForDetails {
@@ -285,7 +285,7 @@ struct RepositoryDetailsTests {
       }
       return repositoryDetails(id: 2)
     }
-    let viewModel = RepositoryDetailsViewModel(owner: "apple", name: "swift", repository: repository)
+    let viewModel = makeDetailsViewModel(repository: repository)
 
     viewModel.load()
     try await waitForDetails { repository.callCount == 1 }
@@ -304,7 +304,7 @@ struct RepositoryDetailsTests {
       handler: { _, _, _ in repositoryDetails(id: 1) },
       readmeHandler: { _, _, _ in RepositoryReadme(content: "# Swift") }
     )
-    let viewModel = RepositoryDetailsViewModel(owner: "apple", name: "swift", repository: repository)
+    let viewModel = makeDetailsViewModel(repository: repository)
 
     viewModel.load()
     try await waitForDetails {
@@ -322,7 +322,7 @@ struct RepositoryDetailsTests {
       handler: { _, _, _ in repositoryDetails(id: 1) },
       readmeHandler: { _, _, _ in throw AppError.notFound }
     )
-    let viewModel = RepositoryDetailsViewModel(owner: "apple", name: "swift", repository: repository)
+    let viewModel = makeDetailsViewModel(repository: repository)
 
     viewModel.load()
     try await waitForDetails {
@@ -340,7 +340,7 @@ struct RepositoryDetailsTests {
       handler: { _, _, _ in repositoryDetails(id: 1) },
       readmeHandler: { _, _, _ in throw AppError.server(statusCode: 500) }
     )
-    let viewModel = RepositoryDetailsViewModel(owner: "apple", name: "swift", repository: repository)
+    let viewModel = makeDetailsViewModel(repository: repository)
 
     viewModel.load()
     try await waitForDetails {
@@ -377,7 +377,7 @@ struct RepositoryDetailsTests {
         return RepositoryReadme(content: "New README")
       }
     )
-    let viewModel = RepositoryDetailsViewModel(owner: "apple", name: "swift", repository: repository)
+    let viewModel = makeDetailsViewModel(repository: repository)
 
     viewModel.load()
     try await waitForDetails { repository.readmeCallCount == 1 }
@@ -476,6 +476,18 @@ private func repositoryDetails(id: Int) -> RepositoryDetails {
     homepageURL: URL(string: "https://swift.org"),
     isArchived: false,
     isFork: false
+  )
+}
+
+@MainActor
+private func makeDetailsViewModel(
+  repository: RepositoriesRepository
+) -> RepositoryDetailsViewModel {
+  RepositoryDetailsViewModel(
+    owner: "apple",
+    name: "swift",
+    repository: repository,
+    favoritesStore: makeFavoritesStore()
   )
 }
 

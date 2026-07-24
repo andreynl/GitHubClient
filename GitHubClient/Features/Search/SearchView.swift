@@ -9,6 +9,9 @@ struct SearchView: View {
     }
     .navigationTitle("Repositories")
     .searchable(text: searchText, prompt: "Search GitHub")
+    .task {
+      await viewModel.loadFavorites()
+    }
   }
 
   @ViewBuilder
@@ -29,13 +32,24 @@ struct SearchView: View {
       errorView(viewModel.state.error)
     case .loaded:
       ForEach(viewModel.state.items) { repository in
-        NavigationLink(
-          value: AppRoute.repository(
-            owner: repository.owner.login,
-            name: repository.name
-          )
-        ) {
-          RepositorySummaryRow(repository: repository)
+        HStack(spacing: 8) {
+          NavigationLink(
+            value: AppRoute.repository(
+              owner: repository.owner.login,
+              name: repository.name
+            )
+          ) {
+            RepositorySummaryRow(repository: repository)
+          }
+
+          FavoriteButton(
+            repositoryName: repository.fullName,
+            isLoaded: viewModel.favoritesAreLoaded,
+            isFavorite: viewModel.isFavorite(repositoryID: repository.id),
+            isUpdating: viewModel.isUpdatingFavorite(repositoryID: repository.id)
+          ) {
+            viewModel.toggleFavorite(repositoryID: repository.id)
+          }
         }
         .onAppear {
           if repository.id == viewModel.state.items.last?.id {
@@ -87,6 +101,45 @@ struct SearchView: View {
       get: { viewModel.state.query },
       set: { viewModel.updateQuery($0) }
     )
+  }
+}
+
+private struct FavoriteButton: View {
+  let repositoryName: String
+  let isLoaded: Bool
+  let isFavorite: Bool
+  let isUpdating: Bool
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Group {
+        if isLoaded {
+          Image(systemName: isFavorite ? "star.fill" : "star")
+            .accessibilityHidden(true)
+        } else {
+          ProgressView()
+            .accessibilityHidden(true)
+        }
+      }
+      .frame(minWidth: 44, minHeight: 44)
+    }
+    .buttonStyle(.plain)
+    .foregroundStyle(isFavorite ? .yellow : .secondary)
+    .disabled(!isLoaded)
+    .accessibilityLabel(accessibilityLabel)
+    .accessibilityHint("Updates this repository's favorite status")
+    .accessibilityValue(isUpdating ? "Saving" : "")
+  }
+
+  private var accessibilityLabel: String {
+    guard isLoaded else {
+      return "Loading favorite status for \(repositoryName)"
+    }
+
+    return isFavorite
+      ? "Remove \(repositoryName) from favorites"
+      : "Add \(repositoryName) to favorites"
   }
 }
 
