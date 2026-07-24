@@ -74,4 +74,28 @@ nonisolated final class GitHubRepositoriesRepository: RepositoriesRepository {
       throw AppError.unknown(error.localizedDescription)
     }
   }
+
+  func repositoryReadme(
+    owner: String,
+    name: String
+  ) async throws -> RepositoryReadme {
+    let normalizedOwner = owner.trimmingCharacters(in: .whitespacesAndNewlines)
+    let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    do {
+      let data = try await apiClient.sendData(
+        .repositoryReadme(owner: normalizedOwner, name: normalizedName)
+      )
+      guard let content = String(data: data, encoding: .utf8) else {
+        throw GitHubAPIError.decoding("The README response is not valid UTF-8.")
+      }
+      return RepositoryReadme(content: content)
+    } catch let error as GitHubAPIError {
+      throw error.appError
+    } catch let error as AppError {
+      throw error
+    } catch {
+      throw AppError.unknown(error.localizedDescription)
+    }
+  }
 }

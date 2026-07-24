@@ -62,6 +62,59 @@ struct RepositoryDetailsTests {
     #expect(details.pushedAt == nil)
   }
 
+  @Test("README endpoint constructs path and requests raw content")
+  func readmeEndpointConstruction() throws {
+    let endpoint = GitHubEndpoint.repositoryReadme(owner: "apple org", name: "swift package")
+    let baseURL = try #require(URL(string: "https://api.github.com"))
+    let request = try endpoint.urlRequest(baseURL: baseURL, accessToken: nil)
+
+    #expect(request.url?.path == "/repos/apple org/swift package/readme")
+    #expect(request.url?.absoluteString.contains("apple%20org/swift%20package/readme") == true)
+    #expect(request.value(forHTTPHeaderField: "Accept") == "application/vnd.github.raw+json")
+    #expect(request.httpMethod == "GET")
+  }
+
+  @Test("Repository maps raw README response without base64 decoding")
+  func repositoryReadmeMapping() async throws {
+    let expectedContent = "# Swift\n\nA language for everyone."
+    let store = MockURLProtocolStore { request in
+      #expect(request.url?.path == "/repos/apple/swift/readme")
+      #expect(request.value(forHTTPHeaderField: "Accept") == "application/vnd.github.raw+json")
+      return HTTPResponse(
+        statusCode: 200,
+        headers: [:],
+        data: Data(expectedContent.utf8)
+      )
+    }
+    let repository = GitHubRepositoriesRepository(
+      apiClient: GitHubAPIClient(
+        baseURL: try #require(URL(string: "https://api.github.test")),
+        session: makeSession(store: store)
+      )
+    )
+
+    let readme = try await repository.repositoryReadme(owner: " apple ", name: " swift ")
+
+    #expect(readme == RepositoryReadme(content: expectedContent))
+  }
+
+  @Test("Repository maps invalid README text encoding deterministically")
+  func repositoryReadmeInvalidEncoding() async throws {
+    let store = MockURLProtocolStore { _ in
+      HTTPResponse(statusCode: 200, headers: [:], data: Data([0xFF]))
+    }
+    let repository = GitHubRepositoriesRepository(
+      apiClient: GitHubAPIClient(
+        baseURL: try #require(URL(string: "https://api.github.test")),
+        session: makeSession(store: store)
+      )
+    )
+
+    await #expect(throws: AppError.decoding("The README response is not valid UTF-8.")) {
+      _ = try await repository.repositoryReadme(owner: "apple", name: "swift")
+    }
+  }
+
   @Test("Repository caches normalized owner and name for current process")
   func repositoryCaching() async throws {
     let counter = LockedCounter()
@@ -169,6 +222,7 @@ struct RepositoryDetailsTests {
     try await waitForDetails { viewModel.state.phase == .loaded }
 
     #expect(repository.callCount == 1)
+    #expect(repository.readmeCallCount == 1)
   }
 
   @MainActor
@@ -200,23 +254,136 @@ struct RepositoryDetailsTests {
     #expect(viewModel.state.details?.id == 2)
     #expect(viewModel.state.error == nil)
   }
+
+  @MainActor
+  @Test("Details view model loads README independently")
+  func viewModelReadmeSuccess() async throws {
+    let repository = DetailsRepositoriesRepositoryStub(
+      handler: { _, _, _ in repositoryDetails(id: 1) },
+      readmeHandler: { _, _, _ in RepositoryReadme(content: "# Swift") }
+    )
+    let viewModel = RepositoryDetailsViewModel(owner: "apple", name: "swift", repository: repository)
+
+    viewModel.load()
+    try await waitForDetails {
+      viewModel.state.phase == .loaded
+        && viewModel.state.readme == .loaded(RepositoryReadme(content: "# Swift"))
+    }
+
+    #expect(viewModel.state.details?.id == 1)
+    #expect(repository.readmeCallCount == 1)
+  }
+
+  @MainActor
+  @Test("README not found is unavailable without replacing details")
+  func viewModelReadmeNotFound() async throws {
+    let repository = DetailsRepositoriesRepositoryStub(
+      handler: { _, _, _ in repositoryDetails(id: 1) },
+      readmeHandler: { _, _, _ in throw AppError.notFound }
+    )
+    let viewModel = RepositoryDetailsViewModel(owner: "apple", name: "swift", repository: repository)
+
+    viewModel.load()
+    try await waitForDetails {
+      viewModel.state.phase == .loaded && viewModel.state.readme == .unavailable
+    }
+
+    #expect(viewModel.state.details?.id == 1)
+    #expect(viewModel.state.error == nil)
+  }
+
+  @MainActor
+  @Test("README failure is unavailable without replacing details")
+  func viewModelReadmeFailure() async throws {
+    let repository = DetailsRepositoriesRepositoryStub(
+      handler: { _, _, _ in repositoryDetails(id: 1) },
+      readmeHandler: { _, _, _ in throw AppError.server(statusCode: 500) }
+    )
+    let viewModel = RepositoryDetailsViewModel(owner: "apple", name: "swift", repository: repository)
+
+    viewModel.load()
+    try await waitForDetails {
+      viewModel.state.phase == .loaded && viewModel.state.readme == .unavailable
+    }
+
+    #expect(viewModel.state.details?.id == 1)
+    #expect(viewModel.state.error == nil)
+  }
+
+  @MainActor
+  @Test("README cancellation stays idle and stale response is ignored")
+  func viewModelReadmeCancellationAndStaleResponsePrevention() async throws {
+    let repository = DetailsRepositoriesRepositoryStub(
+      handler: { _, _, callCount in
+        if callCount == 1 {
+          do {
+            try await Task.sleep(for: .milliseconds(80))
+          } catch is CancellationError {
+            // Return stale data deliberately to verify request identity protection.
+          }
+        }
+        return repositoryDetails(id: callCount)
+      },
+      readmeHandler: { _, _, callCount in
+        if callCount == 1 {
+          do {
+            try await Task.sleep(for: .milliseconds(80))
+          } catch is CancellationError {
+            // Return stale data deliberately to verify request identity protection.
+          }
+          return RepositoryReadme(content: "Old README")
+        }
+        return RepositoryReadme(content: "New README")
+      }
+    )
+    let viewModel = RepositoryDetailsViewModel(owner: "apple", name: "swift", repository: repository)
+
+    viewModel.load()
+    try await waitForDetails { repository.readmeCallCount == 1 }
+    viewModel.cancel()
+    #expect(viewModel.state.readme == .idle)
+
+    viewModel.load()
+    try await waitForDetails {
+      viewModel.state.readme == .loaded(RepositoryReadme(content: "New README"))
+    }
+    try await Task.sleep(for: .milliseconds(100))
+
+    #expect(viewModel.state.readme == .loaded(RepositoryReadme(content: "New README")))
+    #expect(viewModel.state.details?.id == 2)
+  }
 }
 
 private final class DetailsRepositoriesRepositoryStub: RepositoriesRepository, @unchecked Sendable {
   typealias Handler =
     @Sendable (_ owner: String, _ name: String, _ callCount: Int) async throws
     -> RepositoryDetails
+  typealias ReadmeHandler =
+    @Sendable (_ owner: String, _ name: String, _ callCount: Int) async throws
+    -> RepositoryReadme
 
   private let lock = NSLock()
   private let handler: Handler
+  private let readmeHandler: ReadmeHandler
   private var detailsCallCount = 0
+  private var readmeCalls = 0
 
   var callCount: Int {
     lock.withLock { detailsCallCount }
   }
 
-  init(handler: @escaping Handler) {
+  var readmeCallCount: Int {
+    lock.withLock { readmeCalls }
+  }
+
+  init(
+    handler: @escaping Handler,
+    readmeHandler: @escaping ReadmeHandler = { _, _, _ in
+      throw AppError.notFound
+    }
+  ) {
     self.handler = handler
+    self.readmeHandler = readmeHandler
   }
 
   func searchRepositories(query: String, page: Int, perPage: Int) async throws -> RepositoryPage {
@@ -229,6 +396,14 @@ private final class DetailsRepositoriesRepositoryStub: RepositoriesRepository, @
       return detailsCallCount
     }
     return try await handler(owner, name, count)
+  }
+
+  func repositoryReadme(owner: String, name: String) async throws -> RepositoryReadme {
+    let count = lock.withLock {
+      readmeCalls += 1
+      return readmeCalls
+    }
+    return try await readmeHandler(owner, name, count)
   }
 }
 

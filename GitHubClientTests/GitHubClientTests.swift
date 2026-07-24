@@ -488,6 +488,10 @@ private final class MockRepositoriesRepository: RepositoriesRepository, @uncheck
   func repositoryDetails(owner: String, name: String) async throws -> RepositoryDetails {
     throw AppError.unknown("Repository details are not configured for this search test.")
   }
+
+  func repositoryReadme(owner: String, name: String) async throws -> RepositoryReadme {
+    throw AppError.unknown("Repository README is not configured for this search test.")
+  }
 }
 
 private func repositorySummary(id: Int, fullName: String? = nil) -> RepositorySummary {

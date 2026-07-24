@@ -10,8 +10,10 @@ final class RepositoryDetailsViewModel {
   let name: String
 
   @ObservationIgnored private let repository: RepositoriesRepository
-  @ObservationIgnored private var loadTask: Task<Void, Never>?
-  @ObservationIgnored private var requestID = 0
+  @ObservationIgnored private var detailsTask: Task<Void, Never>?
+  @ObservationIgnored private var readmeTask: Task<Void, Never>?
+  @ObservationIgnored private var detailsRequestID = 0
+  @ObservationIgnored private var readmeRequestID = 0
 
   init(
     owner: String,
@@ -24,15 +26,18 @@ final class RepositoryDetailsViewModel {
   }
 
   deinit {
-    loadTask?.cancel()
+    detailsTask?.cancel()
+    readmeTask?.cancel()
   }
 
   func load() {
-    guard state.phase == .idle else {
-      return
+    if state.phase == .idle {
+      startDetailsLoading()
     }
 
-    startLoading()
+    if state.readme == .idle {
+      startReadmeLoading()
+    }
   }
 
   func retry() {
@@ -40,61 +45,111 @@ final class RepositoryDetailsViewModel {
       return
     }
 
-    startLoading()
+    startDetailsLoading()
   }
 
   func cancel() {
-    loadTask?.cancel()
-    loadTask = nil
-    requestID += 1
+    detailsTask?.cancel()
+    detailsTask = nil
+    detailsRequestID += 1
+
+    readmeTask?.cancel()
+    readmeTask = nil
+    readmeRequestID += 1
 
     if state.phase == .loading {
       state = .idle
     }
+
+    if state.readme == .loading {
+      state.readme = .idle
+    }
   }
 
-  private func startLoading() {
-    loadTask?.cancel()
-    requestID += 1
-    let activeRequestID = requestID
+  private func startDetailsLoading() {
+    detailsTask?.cancel()
+    detailsRequestID += 1
+    let activeRequestID = detailsRequestID
 
     state.phase = .loading
     state.error = nil
 
-    loadTask = Task { [weak self, repository, owner, name] in
+    detailsTask = Task { [weak self, repository, owner, name] in
       do {
         let details = try await repository.repositoryDetails(owner: owner, name: name)
-        self?.apply(details, requestID: activeRequestID)
+        self?.applyDetails(details, requestID: activeRequestID)
       } catch {
-        self?.apply(error, requestID: activeRequestID)
+        self?.applyDetailsError(error, requestID: activeRequestID)
       }
     }
   }
 
-  private func apply(_ details: RepositoryDetails, requestID: Int) {
-    guard shouldApplyResponse(requestID: requestID) else {
+  private func startReadmeLoading() {
+    guard state.readme == .idle else {
+      return
+    }
+
+    readmeTask?.cancel()
+    readmeRequestID += 1
+    let activeRequestID = readmeRequestID
+    state.readme = .loading
+
+    readmeTask = Task { [weak self, repository, owner, name] in
+      do {
+        let readme = try await repository.repositoryReadme(owner: owner, name: name)
+        self?.applyReadme(readme, requestID: activeRequestID)
+      } catch {
+        self?.applyReadmeError(error, requestID: activeRequestID)
+      }
+    }
+  }
+
+  private func applyDetails(_ details: RepositoryDetails, requestID: Int) {
+    guard shouldApplyDetailsResponse(requestID: requestID) else {
       return
     }
 
     state.details = details
     state.phase = .loaded
     state.error = nil
-    loadTask = nil
+    detailsTask = nil
   }
 
-  private func apply(_ error: Error, requestID: Int) {
-    guard !isCancellation(error), shouldApplyResponse(requestID: requestID) else {
+  private func applyDetailsError(_ error: Error, requestID: Int) {
+    guard !isCancellation(error), shouldApplyDetailsResponse(requestID: requestID) else {
       return
     }
 
     state.details = nil
     state.phase = .failed
     state.error = mapError(error)
-    loadTask = nil
+    detailsTask = nil
   }
 
-  private func shouldApplyResponse(requestID: Int) -> Bool {
-    !Task.isCancelled && requestID == self.requestID
+  private func applyReadme(_ readme: RepositoryReadme, requestID: Int) {
+    guard shouldApplyReadmeResponse(requestID: requestID) else {
+      return
+    }
+
+    state.readme = .loaded(readme)
+    readmeTask = nil
+  }
+
+  private func applyReadmeError(_ error: Error, requestID: Int) {
+    guard requestID == readmeRequestID else {
+      return
+    }
+
+    state.readme = isCancellation(error) ? .idle : .unavailable
+    readmeTask = nil
+  }
+
+  private func shouldApplyDetailsResponse(requestID: Int) -> Bool {
+    !Task.isCancelled && requestID == detailsRequestID
+  }
+
+  private func shouldApplyReadmeResponse(requestID: Int) -> Bool {
+    !Task.isCancelled && requestID == readmeRequestID
   }
 
   private func isCancellation(_ error: Error) -> Bool {

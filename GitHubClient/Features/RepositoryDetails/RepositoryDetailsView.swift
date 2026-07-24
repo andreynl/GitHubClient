@@ -107,6 +107,8 @@ struct RepositoryDetailsView: View {
           )
         }
       }
+
+      RepositoryReadmeSection(state: viewModel.state.readme)
     }
   }
 
@@ -144,6 +146,37 @@ struct RepositoryDetailsView: View {
     }
 
     return url
+  }
+}
+
+private struct RepositoryReadmeSection: View {
+  let state: RepositoryReadmeViewState
+
+  @ViewBuilder
+  var body: some View {
+    switch state {
+    case .idle, .unavailable:
+      EmptyView()
+    case .loading:
+      Section {
+        ProgressView("Loading README")
+          .accessibilityLabel("Loading repository README")
+      } header: {
+        readmeHeader
+      }
+    case .loaded(let readme):
+      Section {
+        Text(readme.content)
+          .textSelection(.enabled)
+      } header: {
+        readmeHeader
+      }
+    }
+  }
+
+  private var readmeHeader: some View {
+    Text("README")
+      .accessibilityAddTraits(.isHeader)
   }
 }
 

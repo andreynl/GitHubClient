@@ -24,6 +24,16 @@ actor GitHubAPIClient {
     _ endpoint: GitHubEndpoint,
     responseType: Response.Type = Response.self
   ) async throws -> Response {
+    let data = try await sendData(endpoint)
+
+    do {
+      return try decoder.decode(Response.self, from: data)
+    } catch {
+      throw GitHubAPIError.decoding(error.localizedDescription)
+    }
+  }
+
+  func sendData(_ endpoint: GitHubEndpoint) async throws -> Data {
     do {
       let accessToken = try await accessTokenProvider?.accessToken()
       let request = try endpoint.urlRequest(baseURL: baseURL, accessToken: accessToken)
@@ -34,12 +44,7 @@ actor GitHubAPIClient {
       }
 
       try validate(httpResponse)
-
-      do {
-        return try decoder.decode(Response.self, from: data)
-      } catch {
-        throw GitHubAPIError.decoding(error.localizedDescription)
-      }
+      return data
     } catch let error as GitHubAPIError {
       throw error
     } catch let error as URLError where error.code == .cancelled {
