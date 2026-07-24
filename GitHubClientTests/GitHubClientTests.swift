@@ -21,6 +21,40 @@ struct GitHubClientTests {
     #expect(queryItems.contains(URLQueryItem(name: "per_page", value: "25")))
   }
 
+  @Test("Repository-by-ID endpoint constructs the canonical GitHub path")
+  func repositoryByIDEndpointConstruction() throws {
+    let endpoint = GitHubEndpoint.repository(id: 42)
+    let baseURL = try #require(URL(string: "https://api.github.com"))
+    let request = try endpoint.urlRequest(baseURL: baseURL, accessToken: nil)
+
+    #expect(request.url?.path == "/repositories/42")
+    #expect(request.url?.query == nil)
+    #expect(request.value(forHTTPHeaderField: "Accept") == "application/vnd.github+json")
+  }
+
+  @Test("Repository maps repository-by-ID response into a summary")
+  func repositoryByIDMapping() async throws {
+    let store = MockURLProtocolStore { request in
+      #expect(request.url?.path == "/repositories/42")
+      return HTTPResponse(
+        statusCode: 200,
+        headers: [:],
+        data: sampleRepositoryData(id: 42, fullName: "apple/swift")
+      )
+    }
+    let repository = GitHubRepositoriesRepository(
+      apiClient: GitHubAPIClient(
+        baseURL: try #require(URL(string: "https://api.github.test")),
+        session: makeSession(store: store)
+      )
+    )
+
+    let result = try await repository.repository(id: 42)
+
+    #expect(result.id == 42)
+    #expect(result.fullName == "apple/swift")
+  }
+
   @Test("DTO decodes and maps into domain")
   func dtoDecodingAndMapping() throws {
     let data = sampleSearchResponseData(totalCount: 31, id: 1, fullName: "apple/swift")
@@ -728,6 +762,10 @@ private final class MockRepositoriesRepository: RepositoriesRepository, @uncheck
     throw AppError.unknown
   }
 
+  func repository(id: Int) async throws -> RepositorySummary {
+    throw AppError.unknown
+  }
+
   func repositoryReadme(owner: String, name: String) async throws -> RepositoryReadme {
     throw AppError.unknown
   }
@@ -779,6 +817,32 @@ private func sampleSearchResponseData(totalCount: Int, id: Int, fullName: String
           "html_url": "https://github.com/apple/swift"
         }
       ]
+    }
+    """.utf8
+  )
+}
+
+private func sampleRepositoryData(id: Int, fullName: String) -> Data {
+  let name = fullName.split(separator: "/").last.map(String.init) ?? "repository"
+  return Data(
+    """
+    {
+      "id": \(id),
+      "name": "\(name)",
+      "full_name": "\(fullName)",
+      "owner": {
+        "id": 10,
+        "login": "apple",
+        "avatar_url": null,
+        "html_url": "https://github.com/apple",
+        "type": "Organization"
+      },
+      "description": "Description",
+      "stargazers_count": 100,
+      "forks_count": 5,
+      "language": "Swift",
+      "updated_at": "2024-01-01T00:00:00Z",
+      "html_url": "https://github.com/\(fullName)"
     }
     """.utf8
   )

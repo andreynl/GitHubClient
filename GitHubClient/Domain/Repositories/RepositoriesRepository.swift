@@ -10,6 +10,8 @@ nonisolated protocol RepositoriesRepository: Sendable {
     name: String
   ) async throws -> RepositoryDetails
 
+  func repository(id: Int) async throws -> RepositorySummary
+
   func repositoryReadme(
     owner: String,
     name: String

@@ -439,6 +439,10 @@ private final class DetailsRepositoriesRepositoryStub: RepositoriesRepository, @
     return try await handler(owner, name, count)
   }
 
+  func repository(id: Int) async throws -> RepositorySummary {
+    throw AppError.unknown
+  }
+
   func repositoryReadme(owner: String, name: String) async throws -> RepositoryReadme {
     let count = lock.withLock {
       readmeCalls += 1

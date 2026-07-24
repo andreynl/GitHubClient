@@ -549,6 +549,13 @@ private final class FavoritesRepositoriesStub: RepositoriesRepository, @unchecke
     throw AppError.notFound
   }
 
+  func repository(id: Int) async throws -> RepositorySummary {
+    lock.withLock {
+      calls += 1
+    }
+    throw AppError.notFound
+  }
+
   func repositoryReadme(owner: String, name: String) async throws -> RepositoryReadme {
     lock.withLock {
       calls += 1

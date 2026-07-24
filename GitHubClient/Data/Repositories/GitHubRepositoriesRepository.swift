@@ -67,6 +67,15 @@ nonisolated final class GitHubRepositoriesRepository: RepositoriesRepository {
     }
   }
 
+  func repository(id: Int) async throws -> RepositorySummary {
+    do {
+      let dto: RepositoryDTO = try await apiClient.send(.repository(id: id))
+      return dto.toDomain()
+    } catch {
+      throw mapToAppError(error)
+    }
+  }
+
   func repositoryReadme(
     owner: String,
     name: String

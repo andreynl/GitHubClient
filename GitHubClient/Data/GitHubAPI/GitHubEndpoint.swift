@@ -25,6 +25,14 @@ nonisolated struct GitHubEndpoint: Equatable, Sendable {
     )
   }
 
+  static func repository(id: Int) -> GitHubEndpoint {
+    GitHubEndpoint(
+      path: "/repositories/\(id)",
+      queryItems: [],
+      acceptHeader: "application/vnd.github+json"
+    )
+  }
+
   static func repositoryReadme(owner: String, name: String) -> GitHubEndpoint {
     GitHubEndpoint(
       path: "/repos/\(owner)/\(name)/readme",
