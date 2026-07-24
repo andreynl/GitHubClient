@@ -10,19 +10,26 @@ Timing-based tests often become flaky and difficult to maintain.
 
 ## Decision
 
-Tests should rely on controlled fake implementations rather than delays.
+Prefer controlled fake implementations, continuations, and observable
+conditions over arbitrary delays.
 
-Task.sleep should never define correctness.
+New concurrency tests should not use `Task.sleep` as their only ordering
+mechanism. A bounded clock or polling deadline may be used to prevent a failed
+test from hanging.
+
+The repository contains older short-delay tests. They remain accepted technical
+debt until replaced by controlled synchronization in an approved hardening
+scope.
 
 ## Consequences
 
 ### Advantages
 
-- Stable CI
-- Repeatable tests
-- Faster execution
+- More repeatable tests
+- Faster failure diagnosis
 - Easier debugging
 
 ### Trade-offs
 
 - Requires additional test utilities
+- Existing timing-based tests require incremental migration

@@ -1,330 +1,154 @@
-# ARCHITECTURE.md
-
 # GitHubClient Architecture
 
 ## Overview
 
-GitHubClient is built using **Clean Architecture** with **MVVM**, **Repository Pattern**, and **Swift Concurrency**.
+GitHubClient uses MVVM, repository abstractions, constructor-based dependency
+injection, and Swift concurrency. The architecture is organized into folders
+inside one application target; the boundaries are conventions rather than
+separate Swift modules.
 
-The architecture emphasizes:
-
-- clear separation of responsibilities
-- scalability
-- maintainability
-- testability
-- deterministic asynchronous behavior
-
-The project is organized by features while preserving strict architectural boundaries.
-
----
-
-# High-Level Architecture
-
-```
-                +----------------------+
-                |    SwiftUI Views     |
-                +----------+-----------+
-                           |
-                           v
-                +----------------------+
-                |      ViewModels      |
-                +----------+-----------+
-                           |
-                           v
-                +----------------------+
-                |        Domain        |
-                |  Use Cases / Models  |
-                | Repository Protocols |
-                +----------+-----------+
-                           ^
-                           |
-                +----------+-----------+
-                |         Data         |
-                | Repository Impl.     |
-                | API Client           |
-                | Persistence          |
-                +----------------------+
+```text
+SwiftUI Views
+      │
+      ▼
+ViewModels and observable presentation state
+      │
+      ▼
+Domain models and repository protocols
+      ▲
+      │
+Data repositories, API client, caches, and persistence
 ```
 
-Dependencies always point inward.
-
-The Domain layer never depends on Presentation or Data.
-
----
-
-# Architectural Principles
-
-The project follows these principles:
-
-- Single Responsibility Principle
-- Dependency Inversion
-- Composition over inheritance
-- Explicit state management
-- Protocol-oriented design
-- Structured concurrency
-- Small, focused types
-
-Every layer has one clear responsibility.
-
----
-
-# Layer Responsibilities
+There is no separate use-case layer. ViewModels coordinate the small repository
+protocols directly.
 
 ## Presentation
 
-Contains:
+Presentation code lives in `Features`, `Shared`, `ContentView.swift`, and the
+typed navigation route under `App`.
 
-- SwiftUI Views
-- ViewModels
-- Navigation
-- UI state
+Views:
 
-Responsibilities:
+- render observable state;
+- forward user actions;
+- declare navigation and lifecycle hooks;
+- do not access URLSession or UserDefaults.
 
-- display state
-- handle user interaction
-- trigger business operations
-- react to state changes
+ViewModels:
 
-Presentation never:
+- run on `MainActor`;
+- own feature state and task handles;
+- depend on Domain repository protocols;
+- cancel owned tasks and reject stale completions with request identities or
+  generations.
 
-- performs networking
-- talks directly to persistence
-- owns business logic
-
----
+`AppError` and `RepositorySummaryRow` live in the `Shared` folder because they
+are used by multiple features. `Shared` is not a separate module.
 
 ## Domain
 
-Contains:
+`Domain` contains immutable repository models and two `Sendable` repository
+protocols:
 
-- Entities
-- Repository protocols
-- Business rules
+- `RepositoriesRepository`
+- `FavoritesRepository`
 
-The Domain layer is platform independent.
-
-It knows nothing about:
-
-- SwiftUI
-- UIKit
-- URLSession
-- persistence
-
----
+Domain models use Foundation value types such as `URL` and `Date`, but do not
+reference SwiftUI, URLSession, UserDefaults, API DTOs, or concrete Data
+implementations.
 
 ## Data
 
-Contains:
+`Data` contains:
 
-- API clients
-- DTOs
-- Repository implementations
-- Persistence
+- `GitHubAPIClient` and typed `GitHubEndpoint` values;
+- API response DTOs and DTO-to-domain mapping;
+- `GitHubRepositoriesRepository`;
+- process-local search and details caches;
+- `UserDefaultsFavoritesRepository`.
 
-Responsibilities:
+`GitHubRepositoriesRepository` is the boundary that maps `GitHubAPIError` into
+stable `AppError` values. GitHub diagnostics remain in Data.
 
-- network communication
-- JSON decoding
-- mapping DTOs to domain models
-- storing local data
+The search and details caches are actor-isolated, cache-first, process-local,
+and currently have no expiration or capacity policy.
 
-DTOs never leave this layer.
+Favorites persistence stores a JSON-encoded sorted array of repository IDs. It
+does not persist repository DTOs or full search results.
 
----
+## Dependency Construction
 
-# Feature Structure
+`AppContainer.live` is the composition root. It creates:
 
-Each feature is self-contained.
+- one `GitHubAPIClient`;
+- one `GitHubRepositoriesRepository`;
+- one `UserDefaultsFavoritesRepository`;
+- one shared `FavoritesStore`.
 
-Example:
+`ContentView` injects those dependencies into Search, Favorites, and Repository
+Details ViewModels. Views and ViewModels do not construct concrete Data
+repositories.
 
-```
-Search/
+## Cross-Feature Favorite State
 
-    Views/
+`FavoritesStore` is intentionally application-wide presentation state even
+though its source file is under `Features/Favorites`.
 
-    ViewModels/
+The same observable instance is used by:
 
-    Models/
+- Search;
+- Repository Details;
+- Favorites List.
 
-    Components/
-```
+It owns the in-memory favorite ID set, performs optimistic updates, serializes
+writes per repository ID, rolls back current failed writes, and prevents stale
+write completion from overwriting newer intent.
 
-Feature-specific code remains inside its feature.
+## Feature State
 
-Shared code belongs in the Shared module.
+Search uses an explicit primary phase plus an independent pagination state.
 
----
+Repository Details uses:
 
-# State Management
+- `RepositoryDetailsPrimaryState` for details;
+- `RepositoryReadmeViewState` for independently loaded README content.
 
-User-visible states are represented explicitly.
+Favorites List uses `FavoritesViewState`, including initialization, loading,
+empty, loaded, partial-failure metadata, refresh, and failure representation.
 
-Typical states include:
+## Concurrency
 
-- loading
-- loaded
-- empty
-- refreshing
-- partial failure
-- failure
+The project uses `async`/`await`, actor isolation, owned `Task` instances, and a
+bounded task group for Favorites List loading.
 
-Avoid managing complex UI using multiple unrelated Boolean flags.
+Relevant safeguards include:
 
-Prefer expressive enums whenever possible.
+- `MainActor` ViewModels and observable stores;
+- actor-isolated API, caches, and persistence;
+- explicit task cancellation in lifecycle methods and deinitializers;
+- request IDs or generations for stale-response rejection;
+- duplicate request guards;
+- per-ID favorite-write serialization;
+- a Favorites List concurrency limit of four requests.
 
----
+The project does not use `Task.detached`, semaphores, or blocking waits in
+production code.
 
-# Repository Pattern
+## Navigation
 
-ViewModels communicate only through repository protocols.
+`AppRoute` provides typed repository navigation. Search and Favorites each own
+an independent `NavigationStack`. Both construct Repository Details through the
+same injected repositories and shared `FavoritesStore`.
 
-Example:
+## Testing
 
-```
-ViewModel
-      |
-      v
-Repository Protocol
-      ^
-      |
-Repository Implementation
-      |
-      v
-API / Persistence
-```
+The unit-test target uses Swift Testing. It covers endpoint construction,
+decoding, mapping, repositories, caches, state transitions, cancellation,
+stale responses, pagination, persistence, optimistic writes, bounded
+concurrency, retry, refresh, and partial failures.
 
-This provides:
-
-- loose coupling
-- easy testing
-- dependency inversion
-
----
-
-# Dependency Injection
-
-Dependencies are injected from the composition root.
-
-Never instantiate repositories inside ViewModels.
-
-Never instantiate API clients inside Views.
-
-Benefits:
-
-- testability
-- flexibility
-- replaceable implementations
-
----
-
-# Swift Concurrency
-
-The project uses structured concurrency.
-
-Preferred tools:
-
-- async/await
-- Task
-- TaskGroup
-
-Avoid:
-
-- Task.detached
-- blocking synchronization
-- semaphores
-
-UI updates occur on MainActor.
-
-Long-running work should support cancellation.
-
-Stale asynchronous responses must never overwrite newer state.
-
----
-
-# Favorites Synchronization
-
-FavoritesStore is the single source of truth.
-
-Repository identifiers are persisted.
-
-Search, Details, and Favorites remain synchronized through the shared store.
-
-The application avoids duplicate ownership of favorite state.
-
----
-
-# Error Handling
-
-Errors are mapped into domain-friendly representations.
-
-Views display user-friendly messages.
-
-Transport details remain inside the Data layer.
-
-Refresh failures should preserve existing content whenever possible.
-
----
-
-# Testing Strategy
-
-Architecture is designed for deterministic testing.
-
-Key principles:
-
-- protocol abstractions
-- fake repositories
-- dependency injection
-- isolated ViewModels
-- predictable async behavior
-
-The architecture intentionally avoids hidden dependencies.
-
----
-
-# Folder Organization
-
-```
-GitHubClient
-
-├── App
-├── Features
-├── Domain
-├── Data
-├── Shared
-└── Resources
-```
-
-Each folder has a single responsibility.
-
----
-
-# Adding a New Feature
-
-When adding a feature:
-
-1. Define domain models if needed.
-2. Extend repository protocols.
-3. Implement the repository.
-4. Create the ViewModel.
-5. Build SwiftUI views.
-6. Add tests.
-7. Review architecture.
-8. Review tests.
-9. Merge.
-
----
-
-# Design Goals
-
-The architecture prioritizes:
-
-- readability
-- scalability
-- maintainability
-- testability
-- explicit dependencies
-- deterministic concurrency
-
-The goal is not the smallest amount of code, but the clearest and safest design.
+Controlled continuations are used for the most involved favorites concurrency
+tests. Some older tests still use short sleeps or bounded polling; therefore
+the suite reduces timing dependence but does not eliminate it. There is
+currently no UI-test target or CI workflow.

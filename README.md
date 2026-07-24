@@ -1,252 +1,111 @@
 # GitHubClient
 
-> A production-inspired iOS application built with **SwiftUI**, **Clean Architecture**, **MVVM**, and **Swift Concurrency**.
-
-GitHubClient demonstrates how to build a scalable iOS application with a strong focus on architecture, testability, concurrency, and maintainability.
-
-The project was developed incrementally using a phase-based workflow, where each feature is designed, implemented, reviewed, tested, and documented before moving to the next milestone.
-
----
+GitHubClient is an iOS 17+ portfolio application for searching public GitHub
+repositories, viewing repository details and README content, and maintaining a
+persisted list of favorites.
 
 ## Features
 
-### Search Repositories
+- Debounced repository search with pagination, retry, cancellation, and
+  process-local caching
+- Typed navigation to repository details
+- Repository metadata, owner avatar, statistics, topics, dates, and external
+  links
+- Raw-text README loading that fails independently from repository details
+- Persistent favorite repository IDs backed by `UserDefaults`
+- Shared favorite state across Search, Repository Details, and Favorites
+- Favorites refresh, bounded concurrent loading, partial-failure handling, and
+  optimistic removal with rollback
 
-- Search public GitHub repositories
-- Debounced search
-- Loading, empty and error states
-- Pagination support
+## Implementation
 
-### Repository Details
+- Swift 5 language mode
+- SwiftUI and the Observation framework
+- MVVM with folder-level Presentation, Domain, and Data boundaries
+- Repository protocols and constructor-based dependency injection
+- `async`/`await`, owned tasks, task groups, actors, cancellation, and
+  stale-response protection
+- URLSession and the GitHub REST API
+- Swift Testing with controlled fakes and isolated persistence tests
 
-- Repository information
-- Owner information
-- Favorite support
-
-### Favorites
-
-- Persistent favorites
-- Shared synchronization between screens
-- Refresh support
-- Partial failure handling
-- Optimistic UI updates with rollback
-
----
-
-## Architecture
-
-The application follows **Clean Architecture**.
-
-```text
-                Presentation
-          SwiftUI + ViewModels
-                    │
-                    ▼
-                 Domain
-     Models + Repository Protocols
-                    ▲
-                    │
-                    ▼
-                   Data
-    API Clients + Repository Implementations
-```
-
-Main architectural principles:
-
-- Clean Architecture
-- MVVM
-- Repository Pattern
-- Dependency Injection
-- Swift Structured Concurrency
-- Explicit State Management
-- Protocol-oriented design
-
----
-
-## Tech Stack
-
-### Language
-
-- Swift 6
-
-### UI
-
-- SwiftUI
-
-### Architecture
-
-- Clean Architecture
-- MVVM
-- Repository Pattern
-
-### Concurrency
-
-- async/await
-- Task
-- TaskGroup
-- MainActor
-
-### Testing
-
-- XCTest
-- Controlled Fakes
-- Deterministic Concurrency Tests
-
-### Networking
-
-- URLSession
-- GitHub REST API
-
----
+The live configuration uses GitHub's unauthenticated public API. An access-token
+provider can be injected into the API client, but the application does not ship
+with credentials.
 
 ## Project Structure
 
 ```text
-GitHubClient
-│
-├── App
-├── Features
-│   ├── Search
-│   ├── RepositoryDetails
-│   └── Favorites
-│
-├── Domain
-│
-├── Data
-│
-├── Shared
-│
-└── Resources
+GitHubClient/
+├── App/                    Composition and typed routes
+├── Assets.xcassets/
+├── Data/
+│   ├── Cache/
+│   ├── GitHubAPI/
+│   ├── Persistence/
+│   └── Repositories/
+├── Domain/
+│   ├── Models/
+│   └── Repositories/
+├── Features/
+│   ├── Favorites/
+│   ├── FavoritesList/
+│   ├── RepositoryDetails/
+│   └── Search/
+└── Shared/
+
+GitHubClientTests/
 ```
 
----
+The layers are folders in one application target, not separate Swift modules.
+See [ARCHITECTURE.md](ARCHITECTURE.md) and the accepted decisions under
+[docs/adr](docs/adr/).
 
-## Development Workflow
+## Requirements
 
-Every feature follows the same workflow.
-
-```text
-Planning
-      ↓
-Implementation
-      ↓
-Architecture Review
-      ↓
-Test Review
-      ↓
-Merge Review
-      ↓
-Commit
-```
-
-This helps keep every feature small, well-tested and maintainable.
-
----
-
-## Testing
-
-The project focuses heavily on deterministic testing.
-
-Highlights include:
-
-- Controlled fake repositories
-- Cancellation testing
-- Stale response protection
-- Race condition testing
-- Async workflow validation
-- Edge case coverage
-
-Timing-based tests are avoided whenever possible.
-
----
-
-## Quality Goals
-
-The project aims to demonstrate:
-
-- scalable architecture
-- maintainable code
-- explicit state management
-- safe concurrency
-- deterministic testing
-- production-ready design
-
----
-
-## Roadmap
-
-| Phase | Status |
-|--------|--------|
-| Phase 1 | ✅ |
-| Phase 2 | ✅ |
-| Phase 3 | ✅ |
-| Phase 4 | ✅ |
-| Phase 5 | ✅ |
-| Phase 6 | ⬜ Planned |
-
-Detailed roadmap:
-
-- 📄 ROADMAP.md
-
----
-
-## Documentation
-
-Additional documentation can be found in:
-
-- 📄 AGENTS.md
-- 📄 ARCHITECTURE.md
-- 📄 ROADMAP.md
-- 📄 CONTRIBUTING.md
-
----
+Validation for this revision uses Xcode 26.6 and an installed iOS Simulator
+runtime. The current project deployment target is iOS 17.0.
 
 ## Build
 
 ```bash
-git clone https://github.com/<your-account>/GitHubClient.git
-
+git clone https://github.com/andreynl/GitHubClient.git
 cd GitHubClient
 
-open GitHubClient.xcodeproj
+xcodebuild \
+  -project GitHubClient.xcodeproj \
+  -scheme GitHubClient \
+  -configuration Debug \
+  -destination 'generic/platform=iOS Simulator' \
+  CODE_SIGNING_ALLOWED=NO \
+  build
 ```
 
-Build using Xcode or
+To choose a simulator for tests:
+
+```bash
+xcrun simctl list devices available
+```
+
+Then use an available device identifier:
 
 ```bash
 xcodebuild \
--project GitHubClient.xcodeproj \
--scheme GitHubClient \
--destination 'platform=iOS Simulator,name=iPhone 16'
+  -project GitHubClient.xcodeproj \
+  -scheme GitHubClient \
+  -configuration Debug \
+  -destination 'platform=iOS Simulator,id=<SIMULATOR-UDID>' \
+  CODE_SIGNING_ALLOWED=NO \
+  test
 ```
 
----
+## Documentation
 
-## Running Tests
-
-```bash
-xcodebuild test \
--project GitHubClient.xcodeproj \
--scheme GitHubClient \
--destination 'platform=iOS Simulator,name=iPhone 16'
-```
-
----
-
-## Why This Project?
-
-This project was created as a portfolio application to demonstrate professional iOS development practices rather than simply implementing features.
-
-The primary goals are:
-
-- clean architecture
-- testability
-- concurrency correctness
-- maintainability
-- production-quality engineering practices
-
----
+- [AGENTS.md](AGENTS.md) — AI development guidelines
+- [ARCHITECTURE.md](ARCHITECTURE.md) — implemented architecture
+- [ROADMAP.md](ROADMAP.md) — completed phase history and planned work
+- [CONTRIBUTING.md](CONTRIBUTING.md) — contribution workflow
+- [docs/adr](docs/adr/) — accepted architecture decisions
 
 ## License
 
-MIT
+GitHubClient is available under the [MIT License](LICENSE).

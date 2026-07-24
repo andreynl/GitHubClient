@@ -1,168 +1,92 @@
-# ROADMAP.md
-
 # GitHubClient Roadmap
 
-This document tracks the evolution of the project.
+This roadmap records the phases represented by the repository history. It does
+not promise unscheduled product features.
 
-The goal is continuous improvement while maintaining high engineering quality.
+## Completed
 
----
+### Phase 1 — Repository Search Foundation
 
-# Guiding Principles
+- GitHub API client and typed search endpoint
+- Domain repository abstraction and DTO mapping
+- Debounced search, explicit states, pagination, cancellation, and retry
+- Process-local actor-backed search cache
+- Unit tests for networking, mapping, state transitions, and stale responses
 
-Every phase should:
+### Phase 2.1 — Repository Details Foundation
 
-- have a clearly defined scope
-- preserve architectural consistency
-- include deterministic tests
-- undergo architecture review
-- undergo test review
-- avoid unnecessary complexity
+- Typed navigation from search results
+- Repository details domain model, endpoint, DTO, and mapping
+- Process-local actor-backed details cache
+- Details ViewModel and explicit primary state
+- Loading, success, failure, cancellation, and retry coverage
 
----
+### Phase 2.2 — Repository Details Polish
 
-# Completed
+- Owner avatar and repository metadata
+- Statistics, topics, archive state, formatted dates, and external links
+- Dynamic Type-compatible SwiftUI composition and accessibility labels
 
-## Phase 1 — Project Foundation
+### Phase 3 — README Viewer
 
-Status: ✅ Completed
+- Raw-text repository README endpoint
+- README loading independent from primary repository details
+- Graceful README failure that does not replace loaded details
 
-Highlights:
+### Architecture Hardening
 
-- Project setup
-- Clean Architecture foundation
-- MVVM structure
-- Initial dependency injection
-- Networking infrastructure
+- Data-to-presentation error boundary through `AppError`
+- Structured Data-layer diagnostics
+- Cancellation transition fixes
+- Invalid Repository Details primary-state combinations removed
 
----
+### Phase 4 — Persistent Favorites
 
-## Phase 2 — Repository Search
+- Repository-ID persistence through a Domain repository abstraction
+- One shared `FavoritesStore`
+- Search and Details favorite controls
+- Optimistic updates, rollback, serialized per-ID writes, and stale-write
+  protection
 
-Status: ✅ Completed
+### Phase 5 — Favorites Screen
 
-Highlights:
+- Search and Favorites tabs with independent typed navigation stacks
+- Repository summary loading by persisted favorite ID
+- Bounded concurrent loading
+- Deterministic ordering, refresh, retry, and partial-failure states
+- Shared repository-row presentation
 
-- Search repositories
-- Loading state
-- Error handling
-- Empty state
-- Debounced search
+## In Progress
 
----
+### Phase 5.1 — Repository Hardening
 
-## Phase 3 — Repository Details
+- Align public documentation with the implementation
+- Add the declared license
+- Track repository engineering instructions
+- Remove accidental Xcode project churn
+- Verify repository hygiene, build, and tests
 
-Status: ✅ Completed
+## Planned
 
-Highlights:
+### Phase 6
 
-- Details screen
-- Repository metadata
-- Owner information
-- Navigation improvements
+Phase 6 scope must be planned and approved before implementation. Candidates
+identified by the production-readiness review include:
 
----
+- favorites persistence failure presentation
+- recoverable cancellation UI states
+- explicit cache capacity and freshness
+- GitHub secondary rate-limit handling
+- more deterministic asynchronous tests
+- minimal CI and UI smoke coverage
 
-## Phase 4 — Favorites
+These are candidates, not completed or committed scope.
 
-Status: ✅ Completed
+## Unscheduled Ideas
 
-Highlights:
-
-- Favorite repositories
-- Local persistence
-- Shared synchronization
-- Optimistic updates
-- Rollback support
-
----
-
-## Phase 5 — Stability & Concurrency
-
-Status: ✅ Completed
-
-Highlights:
-
-- Structured concurrency improvements
-- Cancellation support
-- Refresh handling
-- Partial failure handling
-- Deterministic testing
-- Stale response protection
-- Architecture refinements
-
----
-
-# Planned
-
-## Phase 6
-
-Status: ⏳ Planned
-
-Possible improvements:
-
-- Performance optimization
-- Additional accessibility improvements
-- Better error presentation
-- UI polish
-
-Scope will be defined before implementation.
-
----
-
-## Future Ideas
-
-Possible future enhancements:
-
-- Offline support
-- Repository caching
-- Image caching
-- Advanced search filters
-- Search history
-- Repository sorting
-- User profiles
-- Dark mode improvements
-- Localization
-
-These items are intentionally not scheduled.
-
----
-
-# Development Process
-
-Each phase follows:
-
-Planning
-
-↓
-
-Scope Approval
-
-↓
-
-Implementation
-
-↓
-
-Architecture Review
-
-↓
-
-Architecture Approval
-
-↓
-
-Test Review
-
-↓
-
-Merge Review
-
-↓
-
-Commit
-
-Only one phase is active at any time.
-
-Future work must not expand the approved scope.
+- offline repository-content support
+- image caching
+- advanced search filters and history
+- repository sorting
+- user profiles
+- localization

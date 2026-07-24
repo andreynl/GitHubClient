@@ -1,4 +1,4 @@
-# ADR-004: Prefer Structured Concurrency
+# ADR-004: Prefer Swift Concurrency with Explicit Task Ownership
 
 ## Status
 
@@ -6,29 +6,35 @@ Accepted
 
 ## Context
 
-The application performs asynchronous searches, refreshes, and cancellation.
+The application performs asynchronous searches, refreshes, persistence, and
+cancellation. Some UI workflows must start work from synchronous actions, so
+ViewModels own explicit `Task` handles in addition to using task groups.
 
-Detached tasks make ownership harder to reason about.
+Detached and unowned fire-and-forget tasks make lifetime and cancellation
+harder to reason about.
 
 ## Decision
 
-Prefer:
+Use:
 
 - async/await
-- Task
-- TaskGroup
+- owned `Task` instances for ViewModel workflows
+- task groups for bounded concurrent child work
+- actors for shared mutable Data-layer state
 
-Avoid Task.detached unless there is a compelling reason.
+Store and cancel task handles where work can outlive the initiating call.
+Protect UI state from stale completions with request identities or generations.
+Avoid `Task.detached` unless a documented ownership requirement justifies it.
 
 ## Consequences
 
 ### Advantages
 
-- Predictable lifetime
-- Automatic cancellation propagation
+- Explicit lifetime and cancellation
+- Child-task cancellation inside task groups
 - Easier reasoning
 - Safer async code
 
 ### Trade-offs
 
-- Requires understanding task hierarchy
+- Requires explicit task ownership for work launched from synchronous UI actions
