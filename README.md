@@ -1,4 +1,4 @@
-
+# GitHubClient
 
 > A production-inspired iOS application built with **SwiftUI**, **Clean Architecture**, **MVVM**, and **Swift Concurrency**.
 
