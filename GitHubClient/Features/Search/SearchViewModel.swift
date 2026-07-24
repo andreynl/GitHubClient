@@ -141,8 +141,10 @@ final class SearchViewModel {
       state.pagination = page.hasNextPage ? .idle : .endReached
       state.error = nil
       state.isShowingCachedData = page.isFromCache
+      searchTask = nil
     } catch {
-      guard !isCancellation(error) else {
+      if isCancellation(error) {
+        applyInitialCancellation(query: query, requestID: requestID)
         return
       }
 
@@ -157,6 +159,7 @@ final class SearchViewModel {
       state.pagination = .idle
       state.error = mapError(error)
       state.isShowingCachedData = false
+      searchTask = nil
     }
   }
 
@@ -178,8 +181,10 @@ final class SearchViewModel {
       state.pagination = repositoryPage.hasNextPage ? .idle : .endReached
       state.error = nil
       state.isShowingCachedData = state.isShowingCachedData && repositoryPage.isFromCache
+      paginationTask = nil
     } catch {
-      guard !isCancellation(error) else {
+      if isCancellation(error) {
+        applyPaginationCancellation(query: query, page: page, requestID: requestID)
         return
       }
 
@@ -190,7 +195,32 @@ final class SearchViewModel {
       pagesInFlight.remove(page)
       state.phase = state.items.isEmpty ? .failed : .loaded
       state.pagination = .failed(mapError(error))
+      paginationTask = nil
     }
+  }
+
+  private func applyInitialCancellation(query: String, requestID: Int) {
+    guard matchesActiveRequest(query: query, requestID: requestID) else {
+      return
+    }
+
+    loadedPages.removeAll()
+    pagesInFlight.removeAll()
+    hasNextPage = false
+    state = RepositorySearchViewState(query: state.query)
+    searchTask = nil
+  }
+
+  private func applyPaginationCancellation(query: String, page: Int, requestID: Int) {
+    guard matchesActiveRequest(query: query, requestID: requestID) else {
+      return
+    }
+
+    pagesInFlight.remove(page)
+    state.phase = state.items.isEmpty ? .idle : .loaded
+    state.pagination = .idle
+    state.error = nil
+    paginationTask = nil
   }
 
   private func resetSearch() {
@@ -208,11 +238,15 @@ final class SearchViewModel {
   }
 
   private func isCancellation(_ error: Error) -> Bool {
-    error is CancellationError || error as? AppError == .cancelled || error as? GitHubAPIError == .cancelled
+    error is CancellationError || error as? AppError == .cancelled
   }
 
   private func shouldApplyResponse(query: String, requestID: Int) -> Bool {
-    !Task.isCancelled && requestID == activeRequestID
+    !Task.isCancelled && matchesActiveRequest(query: query, requestID: requestID)
+  }
+
+  private func matchesActiveRequest(query: String, requestID: Int) -> Bool {
+    requestID == activeRequestID
       && state.query.trimmingCharacters(in: .whitespacesAndNewlines) == query
   }
 
@@ -221,14 +255,10 @@ final class SearchViewModel {
       return appError
     }
 
-    if let apiError = error as? GitHubAPIError {
-      return apiError.appError
-    }
-
     if error is CancellationError {
       return .cancelled
     }
 
-    return .unknown(error.localizedDescription)
+    return .unknown
   }
 }

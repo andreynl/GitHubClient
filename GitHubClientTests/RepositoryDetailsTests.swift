@@ -110,7 +110,7 @@ struct RepositoryDetailsTests {
       )
     )
 
-    await #expect(throws: AppError.decoding("The README response is not valid UTF-8.")) {
+    await #expect(throws: AppError.decoding) {
       _ = try await repository.repositoryReadme(owner: "apple", name: "swift")
     }
   }
@@ -181,10 +181,10 @@ struct RepositoryDetailsTests {
 
     #expect(viewModel.state == .idle)
     viewModel.load()
-    try await waitForDetails { viewModel.state.phase == .loaded }
+    #expect(viewModel.state.primary == .loading)
+    try await waitForDetails { viewModel.state.primary == .loaded(repositoryDetails(id: 1)) }
 
-    #expect(viewModel.state.details?.id == 1)
-    #expect(viewModel.state.error == nil)
+    #expect(viewModel.state.primary == .loaded(repositoryDetails(id: 1)))
   }
 
   @MainActor
@@ -199,12 +199,11 @@ struct RepositoryDetailsTests {
     let viewModel = RepositoryDetailsViewModel(owner: "apple", name: "swift", repository: repository)
 
     viewModel.load()
-    try await waitForDetails { viewModel.state.phase == .failed }
-    #expect(viewModel.state.error == .offline)
+    #expect(viewModel.state.primary == .loading)
+    try await waitForDetails { viewModel.state.primary == .failed(.offline) }
 
     viewModel.retry()
-    try await waitForDetails { viewModel.state.phase == .loaded }
-    #expect(viewModel.state.details?.id == 2)
+    try await waitForDetails { viewModel.state.primary == .loaded(repositoryDetails(id: 2)) }
     #expect(repository.callCount == 2)
   }
 
@@ -219,7 +218,7 @@ struct RepositoryDetailsTests {
 
     viewModel.load()
     viewModel.load()
-    try await waitForDetails { viewModel.state.phase == .loaded }
+    try await waitForDetails { viewModel.state.primary == .loaded(repositoryDetails(id: 1)) }
 
     #expect(repository.callCount == 1)
     #expect(repository.readmeCallCount == 1)
@@ -244,15 +243,58 @@ struct RepositoryDetailsTests {
     viewModel.load()
     try await waitForDetails { repository.callCount == 1 }
     viewModel.cancel()
-    #expect(viewModel.state.phase == .idle)
-    #expect(viewModel.state.error == nil)
+    #expect(viewModel.state.primary == .idle)
 
     viewModel.load()
-    try await waitForDetails { viewModel.state.details?.id == 2 }
+    try await waitForDetails { viewModel.state.primary == .loaded(repositoryDetails(id: 2)) }
     try await Task.sleep(for: .milliseconds(100))
 
-    #expect(viewModel.state.details?.id == 2)
-    #expect(viewModel.state.error == nil)
+    #expect(viewModel.state.primary == .loaded(repositoryDetails(id: 2)))
+  }
+
+  @MainActor
+  @Test("Details repository cancellation resets the current loading state")
+  func viewModelRepositoryCancellation() async throws {
+    let repository = DetailsRepositoriesRepositoryStub { _, _, callCount in
+      if callCount == 1 {
+        throw AppError.cancelled
+      }
+      return repositoryDetails(id: 2)
+    }
+    let viewModel = RepositoryDetailsViewModel(owner: "apple", name: "swift", repository: repository)
+
+    viewModel.load()
+    try await waitForDetails {
+      repository.callCount == 1 && viewModel.state.primary == .idle
+    }
+
+    viewModel.load()
+    try await waitForDetails { viewModel.state.primary == .loaded(repositoryDetails(id: 2)) }
+  }
+
+  @MainActor
+  @Test("Stale details cancellation does not overwrite a newer request")
+  func viewModelStaleCancellation() async throws {
+    let repository = DetailsRepositoriesRepositoryStub { _, _, callCount in
+      if callCount == 1 {
+        do {
+          try await Task.sleep(for: .milliseconds(80))
+        } catch is CancellationError {
+          throw AppError.cancelled
+        }
+      }
+      return repositoryDetails(id: 2)
+    }
+    let viewModel = RepositoryDetailsViewModel(owner: "apple", name: "swift", repository: repository)
+
+    viewModel.load()
+    try await waitForDetails { repository.callCount == 1 }
+    viewModel.cancel()
+    viewModel.load()
+    try await waitForDetails { viewModel.state.primary == .loaded(repositoryDetails(id: 2)) }
+    try await Task.sleep(for: .milliseconds(100))
+
+    #expect(viewModel.state.primary == .loaded(repositoryDetails(id: 2)))
   }
 
   @MainActor
@@ -266,11 +308,10 @@ struct RepositoryDetailsTests {
 
     viewModel.load()
     try await waitForDetails {
-      viewModel.state.phase == .loaded
+      viewModel.state.primary == .loaded(repositoryDetails(id: 1))
         && viewModel.state.readme == .loaded(RepositoryReadme(content: "# Swift"))
     }
 
-    #expect(viewModel.state.details?.id == 1)
     #expect(repository.readmeCallCount == 1)
   }
 
@@ -285,11 +326,11 @@ struct RepositoryDetailsTests {
 
     viewModel.load()
     try await waitForDetails {
-      viewModel.state.phase == .loaded && viewModel.state.readme == .unavailable
+      viewModel.state.primary == .loaded(repositoryDetails(id: 1))
+        && viewModel.state.readme == .unavailable
     }
 
-    #expect(viewModel.state.details?.id == 1)
-    #expect(viewModel.state.error == nil)
+    #expect(viewModel.state.primary == .loaded(repositoryDetails(id: 1)))
   }
 
   @MainActor
@@ -303,11 +344,11 @@ struct RepositoryDetailsTests {
 
     viewModel.load()
     try await waitForDetails {
-      viewModel.state.phase == .loaded && viewModel.state.readme == .unavailable
+      viewModel.state.primary == .loaded(repositoryDetails(id: 1))
+        && viewModel.state.readme == .unavailable
     }
 
-    #expect(viewModel.state.details?.id == 1)
-    #expect(viewModel.state.error == nil)
+    #expect(viewModel.state.primary == .loaded(repositoryDetails(id: 1)))
   }
 
   @MainActor
@@ -350,7 +391,7 @@ struct RepositoryDetailsTests {
     try await Task.sleep(for: .milliseconds(100))
 
     #expect(viewModel.state.readme == .loaded(RepositoryReadme(content: "New README")))
-    #expect(viewModel.state.details?.id == 2)
+    #expect(viewModel.state.primary == .loaded(repositoryDetails(id: 2)))
   }
 }
 
@@ -387,7 +428,7 @@ private final class DetailsRepositoriesRepositoryStub: RepositoriesRepository, @
   }
 
   func searchRepositories(query: String, page: Int, perPage: Int) async throws -> RepositoryPage {
-    throw AppError.unknown("Repository search is not configured for this details test.")
+    throw AppError.unknown
   }
 
   func repositoryDetails(owner: String, name: String) async throws -> RepositoryDetails {

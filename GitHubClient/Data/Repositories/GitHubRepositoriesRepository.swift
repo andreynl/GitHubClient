@@ -38,12 +38,8 @@ nonisolated final class GitHubRepositoriesRepository: RepositoriesRepository {
       let page = dto.toDomain(page: page, perPage: perPage)
       await searchCache.store(page, for: key)
       return page
-    } catch let error as GitHubAPIError {
-      throw error.appError
-    } catch let error as AppError {
-      throw error
     } catch {
-      throw AppError.unknown(error.localizedDescription)
+      throw mapToAppError(error)
     }
   }
 
@@ -66,12 +62,8 @@ nonisolated final class GitHubRepositoriesRepository: RepositoriesRepository {
       let details = dto.toDomain()
       await detailsCache.store(details, for: key)
       return details
-    } catch let error as GitHubAPIError {
-      throw error.appError
-    } catch let error as AppError {
-      throw error
     } catch {
-      throw AppError.unknown(error.localizedDescription)
+      throw mapToAppError(error)
     }
   }
 
@@ -87,15 +79,33 @@ nonisolated final class GitHubRepositoriesRepository: RepositoriesRepository {
         .repositoryReadme(owner: normalizedOwner, name: normalizedName)
       )
       guard let content = String(data: data, encoding: .utf8) else {
-        throw GitHubAPIError.decoding("The README response is not valid UTF-8.")
+        throw GitHubAPIError.decoding(
+          GitHubErrorDiagnostics(
+            domain: "GitHubClient.RepositoryReadme",
+            code: 1,
+            debugDescription: "The README response is not valid UTF-8."
+          )
+        )
       }
       return RepositoryReadme(content: content)
-    } catch let error as GitHubAPIError {
-      throw error.appError
-    } catch let error as AppError {
-      throw error
     } catch {
-      throw AppError.unknown(error.localizedDescription)
+      throw mapToAppError(error)
     }
+  }
+
+  private func mapToAppError(_ error: Error) -> AppError {
+    if let appError = error as? AppError {
+      return appError
+    }
+
+    if let apiError = error as? GitHubAPIError {
+      return apiError.appError
+    }
+
+    if error is CancellationError {
+      return .cancelled
+    }
+
+    return .unknown
   }
 }

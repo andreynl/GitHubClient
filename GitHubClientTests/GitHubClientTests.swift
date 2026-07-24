@@ -94,6 +94,117 @@ struct GitHubClientTests {
     }
   }
 
+  @Test("API client maps raw token-provider cancellation without starting transport")
+  func apiClientRawCancellationMapping() async throws {
+    let store = MockURLProtocolStore { _ in
+      Issue.record("Cancellation during token acquisition must not start a request")
+      return HTTPResponse(statusCode: 200, headers: [:], data: Data())
+    }
+    let client = GitHubAPIClient(
+      baseURL: try #require(URL(string: "https://api.github.test")),
+      session: makeSession(store: store),
+      accessTokenProvider: CancellingAccessTokenProvider()
+    )
+
+    await #expect(throws: GitHubAPIError.cancelled) {
+      let _: RepositorySearchResponseDTO = try await client.send(
+        .searchRepositories(query: "swift", page: 1, perPage: 30)
+      )
+    }
+  }
+
+  @Test("Repository maps raw token-provider cancellation to app cancellation")
+  func repositoryRawCancellationMapping() async throws {
+    let store = MockURLProtocolStore { _ in
+      Issue.record("Cancellation during token acquisition must not start a request")
+      return HTTPResponse(statusCode: 200, headers: [:], data: Data())
+    }
+    let repository = GitHubRepositoriesRepository(
+      apiClient: GitHubAPIClient(
+        baseURL: try #require(URL(string: "https://api.github.test")),
+        session: makeSession(store: store),
+        accessTokenProvider: CancellingAccessTokenProvider()
+      )
+    )
+
+    await #expect(throws: AppError.cancelled) {
+      _ = try await repository.searchRepositories(query: "swift", page: 1, perPage: 30)
+    }
+  }
+
+  @Test("API client preserves structured transport diagnostics")
+  func apiClientTransportDiagnostics() async throws {
+    let store = MockURLProtocolStore { _ in
+      throw URLError(.cannotFindHost)
+    }
+    let client = GitHubAPIClient(
+      baseURL: try #require(URL(string: "https://api.github.test")),
+      session: makeSession(store: store)
+    )
+
+    do {
+      let _: RepositorySearchResponseDTO = try await client.send(
+        .searchRepositories(query: "swift", page: 1, perPage: 30)
+      )
+      Issue.record("Expected transport error")
+    } catch GitHubAPIError.transport(let diagnostics) {
+      #expect(diagnostics.domain == NSURLErrorDomain)
+      #expect(diagnostics.code == URLError.cannotFindHost.rawValue)
+      #expect(!diagnostics.debugDescription.isEmpty)
+    }
+  }
+
+  @Test("Repository maps decoding failures to stable app error")
+  func repositoryDecodingErrorMapping() async throws {
+    let store = MockURLProtocolStore { _ in
+      HTTPResponse(statusCode: 200, headers: [:], data: Data("{".utf8))
+    }
+    let repository = GitHubRepositoriesRepository(
+      apiClient: GitHubAPIClient(
+        baseURL: try #require(URL(string: "https://api.github.test")),
+        session: makeSession(store: store)
+      )
+    )
+
+    await #expect(throws: AppError.decoding) {
+      _ = try await repository.searchRepositories(query: "swift", page: 1, perPage: 30)
+    }
+  }
+
+  @Test("Repository maps generic transport failures to stable app error")
+  func repositoryTransportErrorMapping() async throws {
+    let store = MockURLProtocolStore { _ in
+      throw URLError(.cannotConnectToHost)
+    }
+    let repository = GitHubRepositoriesRepository(
+      apiClient: GitHubAPIClient(
+        baseURL: try #require(URL(string: "https://api.github.test")),
+        session: makeSession(store: store)
+      )
+    )
+
+    await #expect(throws: AppError.transport) {
+      _ = try await repository.searchRepositories(query: "swift", page: 1, perPage: 30)
+    }
+  }
+
+  @Test("Repository preserves offline as a distinct app error")
+  func repositoryOfflineErrorMapping() async throws {
+    let store = MockURLProtocolStore { _ in
+      throw URLError(.notConnectedToInternet)
+    }
+    let repository = GitHubRepositoriesRepository(
+      apiClient: GitHubAPIClient(
+        baseURL: try #require(URL(string: "https://api.github.test")),
+        session: makeSession(store: store)
+      )
+    )
+
+    await #expect(throws: AppError.offline) {
+      _ = try await repository.searchRepositories(query: "swift", page: 1, perPage: 30)
+    }
+  }
+
   @Test("API client maps rate limit headers")
   func apiClientRateLimitMapping() async throws {
     let store = MockURLProtocolStore { _ in
@@ -279,6 +390,60 @@ struct GitHubClientTests {
   }
 
   @MainActor
+  @Test("Search repository cancellation resets the current loading state")
+  func viewModelRepositoryCancellation() async throws {
+    let repository = MockRepositoriesRepository { _, _, callCount in
+      if callCount == 1 {
+        throw AppError.cancelled
+      }
+      return RepositoryPage(
+        items: [repositorySummary(id: 2)],
+        currentPage: 1,
+        hasNextPage: false,
+        totalCount: 1
+      )
+    }
+    let viewModel = SearchViewModel(repository: repository, debounceDuration: .milliseconds(1))
+
+    viewModel.updateQuery("swift")
+    try await waitFor { repository.callCount == 1 && viewModel.state.phase == .idle }
+
+    #expect(viewModel.state.error == nil)
+    viewModel.updateQuery("swift")
+    try await waitFor { viewModel.state.items.map(\.id) == [2] }
+  }
+
+  @MainActor
+  @Test("Stale search cancellation does not overwrite a newer request")
+  func viewModelStaleCancellation() async throws {
+    let repository = MockRepositoriesRepository { query, _, _ in
+      if query == "swift" {
+        do {
+          try await Task.sleep(for: .milliseconds(80))
+        } catch is CancellationError {
+          throw AppError.cancelled
+        }
+      }
+      return RepositoryPage(
+        items: [repositorySummary(id: 2)],
+        currentPage: 1,
+        hasNextPage: false,
+        totalCount: 1
+      )
+    }
+    let viewModel = SearchViewModel(repository: repository, debounceDuration: .milliseconds(1))
+
+    viewModel.updateQuery("swift")
+    try await waitFor { repository.callCount == 1 }
+    viewModel.updateQuery("swiftui")
+    try await waitFor { viewModel.state.items.map(\.id) == [2] }
+    try await Task.sleep(for: .milliseconds(100))
+
+    #expect(viewModel.state.phase == .loaded)
+    #expect(viewModel.state.error == nil)
+  }
+
+  @MainActor
   @Test("Search view model paginates")
   func viewModelPagination() async throws {
     let repository = MockRepositoriesRepository { _, page, _ in
@@ -348,6 +513,35 @@ struct GitHubClientTests {
 
     #expect(viewModel.state.items.map(\.id) == [1])
     #expect(viewModel.state.phase == .loaded)
+  }
+
+  @MainActor
+  @Test("Pagination cancellation preserves current items")
+  func viewModelPaginationCancellationPreservesItems() async throws {
+    let repository = MockRepositoriesRepository { _, page, _ in
+      if page == 2 {
+        throw AppError.cancelled
+      }
+      return RepositoryPage(
+        items: [repositorySummary(id: 1)],
+        currentPage: 1,
+        hasNextPage: true,
+        totalCount: 2
+      )
+    }
+    let viewModel = SearchViewModel(repository: repository, debounceDuration: .milliseconds(1))
+
+    viewModel.updateQuery("swift")
+    try await waitFor { viewModel.state.phase == .loaded }
+    viewModel.loadNextPage()
+    try await waitFor {
+      repository.calls.contains { $0.page == 2 }
+        && viewModel.state.pagination == .idle
+    }
+
+    #expect(viewModel.state.items.map(\.id) == [1])
+    #expect(viewModel.state.phase == .loaded)
+    #expect(viewModel.state.error == nil)
   }
 }
 
@@ -486,11 +680,17 @@ private final class MockRepositoriesRepository: RepositoriesRepository, @uncheck
   }
 
   func repositoryDetails(owner: String, name: String) async throws -> RepositoryDetails {
-    throw AppError.unknown("Repository details are not configured for this search test.")
+    throw AppError.unknown
   }
 
   func repositoryReadme(owner: String, name: String) async throws -> RepositoryReadme {
-    throw AppError.unknown("Repository README is not configured for this search test.")
+    throw AppError.unknown
+  }
+}
+
+private struct CancellingAccessTokenProvider: AccessTokenProvider {
+  func accessToken() async throws -> String? {
+    throw CancellationError()
   }
 }
 

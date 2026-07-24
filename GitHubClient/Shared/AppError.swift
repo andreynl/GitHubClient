@@ -2,8 +2,8 @@ import Foundation
 
 nonisolated enum AppError: Error, Equatable, Sendable {
   case invalidURL
-  case transport(String)
-  case decoding(String)
+  case transport
+  case decoding
   case unauthorized
   case forbidden
   case rateLimited(RateLimitInfo?)
@@ -12,14 +12,14 @@ nonisolated enum AppError: Error, Equatable, Sendable {
   case unexpectedStatusCode(Int)
   case offline
   case cancelled
-  case unknown(String)
+  case unknown
 
   var message: String {
     switch self {
     case .invalidURL:
       "The request URL could not be created."
-    case .transport(let message):
-      message
+    case .transport:
+      "The request could not be completed. Try again."
     case .decoding:
       "The response could not be read."
     case .unauthorized:
@@ -42,8 +42,8 @@ nonisolated enum AppError: Error, Equatable, Sendable {
       "The network appears to be offline."
     case .cancelled:
       "The request was cancelled."
-    case .unknown(let message):
-      message
+    case .unknown:
+      "Something went wrong. Try again."
     }
   }
 }

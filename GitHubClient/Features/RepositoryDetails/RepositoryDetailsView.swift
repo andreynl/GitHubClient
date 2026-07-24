@@ -10,20 +10,20 @@ struct RepositoryDetailsView: View {
 
   var body: some View {
     Group {
-      switch viewModel.state.phase {
-      case .idle, .loading:
+      switch viewModel.state.primary {
+      case .idle:
+        EmptyView()
+      case .loading:
         ProgressView("Loading repository")
           .frame(maxWidth: .infinity, maxHeight: .infinity)
           .accessibilityLabel("Loading repository details")
-      case .loaded:
-        if let details = viewModel.state.details {
-          detailsContent(details)
-        }
-      case .failed:
-        errorContent
+      case .loaded(let details):
+        detailsContent(details)
+      case .failed(let error):
+        errorContent(error)
       }
     }
-    .navigationTitle(viewModel.state.details?.name ?? viewModel.name)
+    .navigationTitle(navigationTitle)
     .navigationBarTitleDisplayMode(.inline)
     .onAppear {
       viewModel.load()
@@ -112,16 +112,24 @@ struct RepositoryDetailsView: View {
     }
   }
 
-  private var errorContent: some View {
+  private func errorContent(_ error: AppError) -> some View {
     ContentUnavailableView {
       Label("Unable to load repository", systemImage: "exclamationmark.triangle")
     } description: {
-      Text(viewModel.state.error?.message ?? "Try again later.")
+      Text(error.message)
     } actions: {
       Button("Retry") {
         viewModel.retry()
       }
     }
+  }
+
+  private var navigationTitle: String {
+    guard case .loaded(let details) = viewModel.state.primary else {
+      return viewModel.name
+    }
+
+    return details.name
   }
 
   private func detailRow(_ title: String, value: String) -> some View {

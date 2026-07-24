@@ -31,7 +31,7 @@ final class RepositoryDetailsViewModel {
   }
 
   func load() {
-    if state.phase == .idle {
+    if state.primary == .idle {
       startDetailsLoading()
     }
 
@@ -41,7 +41,7 @@ final class RepositoryDetailsViewModel {
   }
 
   func retry() {
-    guard state.phase == .failed else {
+    guard case .failed = state.primary else {
       return
     }
 
@@ -57,8 +57,8 @@ final class RepositoryDetailsViewModel {
     readmeTask = nil
     readmeRequestID += 1
 
-    if state.phase == .loading {
-      state = .idle
+    if state.primary == .loading {
+      state.primary = .idle
     }
 
     if state.readme == .loading {
@@ -71,8 +71,7 @@ final class RepositoryDetailsViewModel {
     detailsRequestID += 1
     let activeRequestID = detailsRequestID
 
-    state.phase = .loading
-    state.error = nil
+    state.primary = .loading
 
     detailsTask = Task { [weak self, repository, owner, name] in
       do {
@@ -109,20 +108,16 @@ final class RepositoryDetailsViewModel {
       return
     }
 
-    state.details = details
-    state.phase = .loaded
-    state.error = nil
+    state.primary = .loaded(details)
     detailsTask = nil
   }
 
   private func applyDetailsError(_ error: Error, requestID: Int) {
-    guard !isCancellation(error), shouldApplyDetailsResponse(requestID: requestID) else {
+    guard requestID == detailsRequestID else {
       return
     }
 
-    state.details = nil
-    state.phase = .failed
-    state.error = mapError(error)
+    state.primary = isCancellation(error) ? .idle : .failed(mapError(error))
     detailsTask = nil
   }
 
@@ -153,7 +148,7 @@ final class RepositoryDetailsViewModel {
   }
 
   private func isCancellation(_ error: Error) -> Bool {
-    error is CancellationError || error as? AppError == .cancelled || error as? GitHubAPIError == .cancelled
+    error is CancellationError || error as? AppError == .cancelled
   }
 
   private func mapError(_ error: Error) -> AppError {
@@ -161,10 +156,6 @@ final class RepositoryDetailsViewModel {
       return appError
     }
 
-    if let apiError = error as? GitHubAPIError {
-      return apiError.appError
-    }
-
-    return .unknown(error.localizedDescription)
+    return .unknown
   }
 }

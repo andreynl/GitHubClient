@@ -29,7 +29,7 @@ actor GitHubAPIClient {
     do {
       return try decoder.decode(Response.self, from: data)
     } catch {
-      throw GitHubAPIError.decoding(error.localizedDescription)
+      throw GitHubAPIError.decoding(GitHubErrorDiagnostics(error: error))
     }
   }
 
@@ -40,7 +40,13 @@ actor GitHubAPIClient {
       let (data, response) = try await session.data(for: request)
 
       guard let httpResponse = response as? HTTPURLResponse else {
-        throw GitHubAPIError.unknown("The response was not an HTTP response.")
+        throw GitHubAPIError.unknown(
+          GitHubErrorDiagnostics(
+            domain: "GitHubClient.GitHubAPIClient",
+            code: 1,
+            debugDescription: "The response was not an HTTP response."
+          )
+        )
       }
 
       try validate(httpResponse)
@@ -49,12 +55,14 @@ actor GitHubAPIClient {
       throw error
     } catch let error as URLError where error.code == .cancelled {
       throw GitHubAPIError.cancelled
+    } catch is CancellationError {
+      throw GitHubAPIError.cancelled
     } catch let error as URLError
       where error.code == .notConnectedToInternet || error.code == .networkConnectionLost
     {
       throw GitHubAPIError.offline
     } catch {
-      throw GitHubAPIError.transport(error.localizedDescription)
+      throw GitHubAPIError.transport(GitHubErrorDiagnostics(error: error))
     }
   }
 

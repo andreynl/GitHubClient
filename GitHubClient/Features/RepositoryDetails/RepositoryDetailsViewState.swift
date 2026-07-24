@@ -1,8 +1,8 @@
-enum RepositoryDetailsPhase: Equatable, Sendable {
+enum RepositoryDetailsPrimaryState: Equatable, Sendable {
   case idle
   case loading
-  case loaded
-  case failed
+  case loaded(RepositoryDetails)
+  case failed(AppError)
 }
 
 enum RepositoryReadmeViewState: Equatable, Sendable {
@@ -13,15 +13,11 @@ enum RepositoryReadmeViewState: Equatable, Sendable {
 }
 
 struct RepositoryDetailsViewState: Equatable, Sendable {
-  var details: RepositoryDetails?
-  var phase: RepositoryDetailsPhase
-  var error: AppError?
+  var primary: RepositoryDetailsPrimaryState
   var readme: RepositoryReadmeViewState
 
   static let idle = RepositoryDetailsViewState(
-    details: nil,
-    phase: .idle,
-    error: nil,
+    primary: .idle,
     readme: .idle
   )
 }
