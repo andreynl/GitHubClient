@@ -63,7 +63,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) and the accepted decisions under
 ## Requirements
 
 Validation for this revision uses Xcode 26.6 and an installed iOS Simulator
-runtime. The current project deployment target is iOS 17.0.
+runtime. The current project deployment target is iOS 26.0.
 
 ## Build
 
