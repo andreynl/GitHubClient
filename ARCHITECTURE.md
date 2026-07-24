@@ -43,8 +43,16 @@ ViewModels:
 - cancel owned tasks and reject stale completions with request identities or
   generations.
 
-`AppError` and `RepositorySummaryRow` live in the `Shared` folder because they
-are used by multiple features. `Shared` is not a separate module.
+`AppError` is the application-wide cross-layer error contract. Data converts
+infrastructure failures into stable `AppError` values, and Features consume
+those values for deterministic presentation behavior. It lives in `Shared`
+because the project intentionally uses one application target; this placement
+is a documented convention rather than a compiler-enforced module boundary.
+If the project is modularized later, the contract's placement should be
+reconsidered.
+
+`RepositorySummaryRow` also lives in `Shared` because it is used by multiple
+features. `Shared` is not a separate module.
 
 ## Domain
 

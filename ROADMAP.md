@@ -56,8 +56,6 @@ not promise unscheduled product features.
 - Deterministic ordering, refresh, retry, and partial-failure states
 - Shared repository-row presentation
 
-## In Progress
-
 ### Phase 5.1 — Repository Hardening
 
 - Align public documentation with the implementation
@@ -65,6 +63,14 @@ not promise unscheduled product features.
 - Track repository engineering instructions
 - Remove accidental Xcode project churn
 - Verify repository hygiene, build, and tests
+
+### Phase 5.2 — Public Release Readiness
+
+- Add the required-reason privacy manifest for app-owned favorites persistence
+- Integrate complete application icon artwork
+- Add an adaptive static light and dark launch presentation
+- Add GitHub Actions build and test validation
+- Correct roadmap status and clarify the cross-layer `AppError` contract
 
 ## Planned
 
@@ -78,7 +84,7 @@ identified by the production-readiness review include:
 - explicit cache capacity and freshness
 - GitHub secondary rate-limit handling
 - more deterministic asynchronous tests
-- minimal CI and UI smoke coverage
+- minimal UI smoke coverage
 
 These are candidates, not completed or committed scope.
 

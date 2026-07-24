@@ -1,0 +1,81 @@
+name: iOS
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Print Xcode version
+        run: xcodebuild -version
+
+      - name: Validate repository
+        run: git diff --check
+
+      - name: Select simulator
+        run: |
+          xcrun simctl list devices available
+          SIMULATOR_UDID="$(
+            xcrun simctl list devices available -j |
+              ruby -rjson -e '
+                devices = JSON.parse(STDIN.read).fetch("devices")
+                candidates = devices.flat_map do |runtime, entries|
+                  match = runtime.match(/iOS-(\d+)-(\d+)/)
+                  version = match ? [match[1].to_i, match[2].to_i] : [0, 0]
+                  entries.map do |device|
+                    next unless device["isAvailable"] && device["name"].start_with?("iPhone")
+                    [version, device["name"], device["udid"]]
+                  end.compact
+                end
+                selected = candidates.sort_by { |version, name, _| [-version[0], -version[1], name] }.first
+                abort("No available iPhone simulator found") unless selected
+                puts selected[2]
+              '
+          )"
+          echo "SIMULATOR_UDID=$SIMULATOR_UDID" >> "$GITHUB_ENV"
+          echo "Selected simulator: $SIMULATOR_UDID"
+
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild -quiet \
+            -project GitHubClient.xcodeproj \
+            -scheme GitHubClient \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/GitHubClientBuildDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES \
+            GCC_TREAT_WARNINGS_AS_ERRORS=YES \
+            clean build 2>&1 | tee "$RUNNER_TEMP/build.log"
+          if grep -E '(^|: )warning:' "$RUNNER_TEMP/build.log"; then
+            echo "Build produced warnings."
+            exit 1
+          fi
+
+      - name: Test
+        run: |
+          set -o pipefail
+          xcodebuild -quiet \
+            -project GitHubClient.xcodeproj \
+            -scheme GitHubClient \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -derivedDataPath "$RUNNER_TEMP/GitHubClientTestDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES \
+            GCC_TREAT_WARNINGS_AS_ERRORS=YES \
+            test 2>&1 | tee "$RUNNER_TEMP/test.log"
+          if grep -E '(^|: )warning:' "$RUNNER_TEMP/test.log"; then
+            echo "Tests produced warnings."
+            exit 1
+          fi

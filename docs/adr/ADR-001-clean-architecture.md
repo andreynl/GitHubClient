@@ -20,7 +20,12 @@ The application is divided into three layers:
 - Domain
 - Data
 
-Dependencies always point toward the Domain layer.
+Dependencies generally point toward the Domain layer. `AppError` is the
+application-wide cross-layer error contract: Data converts infrastructure
+failures into it, and Presentation consumes it. The contract lives in `Shared`
+because the project currently uses one application target, so this boundary is
+a documented convention rather than a compiler-enforced module dependency.
+Its placement should be reconsidered if the project is modularized.
 
 ## Consequences
 

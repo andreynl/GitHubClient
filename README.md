@@ -23,6 +23,8 @@ persisted list of favorites.
 - SwiftUI and the Observation framework
 - MVVM with folder-level Presentation, Domain, and Data boundaries
 - Repository protocols and constructor-based dependency injection
+- An application-wide `AppError` contract shared by Data and Presentation in
+  the single application target
 - `async`/`await`, owned tasks, task groups, actors, cancellation, and
   stale-response protection
 - URLSession and the GitHub REST API

@@ -41,13 +41,17 @@ Presentation
 
 ## Dependency Rules
 
-Presentation depends only on Domain.
+Presentation depends on Domain abstractions and the application-wide
+`AppError` contract in `Shared`.
 
-Data depends on Domain.
+Data depends on Domain abstractions and converts infrastructure failures into
+the same `AppError` contract.
 
 Domain depends on nothing.
 
-Never violate dependency direction.
+`AppError` is a deliberate cross-layer contract in this single-target project,
+not a compiler-enforced module boundary. Reconsider its placement if the
+project is modularized.
 
 ---
 

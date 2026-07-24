@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0"
+    toolsVersion="23000" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none"
+    useAutolayout="YES" launchScreen="YES" useTraitCollections="YES"
+    useSafeAreas="YES" colorMatched="YES" initialViewController="VC">
+    <device id="retina6_12" orientation="portrait" appearance="light"/>
+    <dependencies>
+        <deployment identifier="iOS"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="23000"/>
+        <capability name="Named colors" minToolsVersion="9.0"/>
+    </dependencies>
+    <scenes>
+        <scene sceneID="Scene">
+            <objects>
+                <viewController id="VC" sceneMemberID="viewController">
+                    <view key="view" clipsSubviews="YES" contentMode="scaleToFill" id="Root">
+                        <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
+                        <subviews>
+                            <imageView userInteractionEnabled="NO" contentMode="scaleAspectFill"
+                                image="LaunchSplash" translatesAutoresizingMaskIntoConstraints="NO" id="Splash">
+                                <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
+                            </imageView>
+                        </subviews>
+                        <color key="backgroundColor" name="LaunchBackground"/>
+                        <constraints>
+                            <constraint firstItem="Splash" firstAttribute="leading" secondItem="Root" secondAttribute="leading" id="SplashLeading"/>
+                            <constraint firstAttribute="trailing" secondItem="Splash" secondAttribute="trailing" id="SplashTrailing"/>
+                            <constraint firstItem="Splash" firstAttribute="top" secondItem="Root" secondAttribute="top" id="SplashTop"/>
+                            <constraint firstAttribute="bottom" secondItem="Splash" secondAttribute="bottom" id="SplashBottom"/>
+                        </constraints>
+                    </view>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="FR" sceneMemberID="firstResponder"/>
+            </objects>
+        </scene>
+    </scenes>
+    <resources>
+        <image name="LaunchSplash" width="853" height="1844"/>
+        <namedColor name="LaunchBackground">
+            <color red="0.992" green="0.949" blue="0.899" alpha="1"
+                colorSpace="custom" customColorSpace="sRGB"/>
+        </namedColor>
+    </resources>
+</document>
