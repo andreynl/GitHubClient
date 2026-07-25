@@ -16,7 +16,7 @@
                     <view key="view" clipsSubviews="YES" contentMode="scaleToFill" id="Root">
                         <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
                         <subviews>
-                            <imageView userInteractionEnabled="NO" contentMode="scaleAspectFill"
+                            <imageView userInteractionEnabled="NO" contentMode="scaleAspectFit"
                                 image="LaunchSplash" translatesAutoresizingMaskIntoConstraints="NO" id="Splash">
                                 <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
                             </imageView>

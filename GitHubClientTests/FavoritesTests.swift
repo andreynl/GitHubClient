@@ -263,8 +263,8 @@ struct FavoritesTests {
     let repository = InMemoryFavoritesRepository(
       writeBehaviors: [
         1: [
-          .failure(delay: .milliseconds(60)),
-          .success(delay: .milliseconds(80)),
+          .controlled,
+          .controlled,
         ]
       ]
     )
@@ -274,12 +274,67 @@ struct FavoritesTests {
     store.toggle(repositoryID: 1)
     try await waitForAsync { await repository.writeCalls().count == 1 }
     store.toggle(repositoryID: 1)
+
+    #expect(!store.isFavorite(repositoryID: 1))
+    #expect(store.isUpdating(repositoryID: 1))
+    #expect(
+      await repository.completeNextControlledWrite(
+        repositoryID: 1,
+        result: .failure
+      )
+    )
     try await waitForAsync { await repository.writeCalls().count == 2 }
 
     #expect(!store.isFavorite(repositoryID: 1))
     #expect(store.isUpdating(repositoryID: 1))
+    #expect(await repository.pendingControlledWriteCount() == 1)
+    #expect(
+      await repository.completeNextControlledWrite(
+        repositoryID: 1,
+        result: .success
+      )
+    )
     try await waitForFavorites { !store.isUpdating(repositoryID: 1) }
+
     #expect(!store.isFavorite(repositoryID: 1))
+    #expect(try await repository.favoriteRepositoryIDs().isEmpty)
+    #expect(
+      await repository.writeCalls().map(\.isFavorite) == [true, false]
+    )
+    #expect(await repository.maximumConcurrentWrites(for: 1) == 1)
+    #expect(await repository.pendingControlledWriteCount() == 0)
+  }
+
+  @Test("Cancelling a controlled write resumes and removes its continuation")
+  func controlledWriteCancellation() async throws {
+    let repository = InMemoryFavoritesRepository(
+      writeBehaviors: [1: [.controlled]]
+    )
+    let writeTask = Task {
+      try await repository.setFavorite(true, repositoryID: 1)
+    }
+
+    try await waitForAsync {
+      await repository.pendingControlledWriteCount() == 1
+    }
+    writeTask.cancel()
+
+    do {
+      try await writeTask.value
+      Issue.record("Expected controlled write cancellation")
+    } catch is CancellationError {
+      // Expected cancellation.
+    } catch {
+      Issue.record("Expected CancellationError, received \(error)")
+    }
+
+    #expect(await repository.pendingControlledWriteCount() == 0)
+    #expect(
+      await repository.completeNextControlledWrite(
+        repositoryID: 1,
+        result: .success
+      ) == false
+    )
   }
 
   @MainActor
@@ -412,7 +467,14 @@ enum FavoriteWriteBehavior: Sendable {
   case success(delay: Duration = .zero)
   case failure(delay: Duration = .zero)
   case cancellation(delay: Duration = .zero)
+  case controlled
   case suspendUntilCancelled
+}
+
+enum FavoriteControlledWriteResult: Sendable {
+  case success
+  case failure
+  case cancellation
 }
 
 struct FavoriteWriteCall: Equatable, Sendable {
@@ -421,6 +483,11 @@ struct FavoriteWriteCall: Equatable, Sendable {
 }
 
 actor InMemoryFavoritesRepository: FavoritesRepository {
+  private struct ControlledWrite {
+    let id: UUID
+    let continuation: CheckedContinuation<Void, any Error>
+  }
+
   private var ids: Set<Int>
   private let readBehavior: FavoriteReadBehavior
   private var writeBehaviors: [Int: [FavoriteWriteBehavior]]
@@ -429,6 +496,7 @@ actor InMemoryFavoritesRepository: FavoritesRepository {
   private var activeWrites: [Int: Int] = [:]
   private var maximumWrites: [Int: Int] = [:]
   private var cancelledWrites = 0
+  private var controlledWrites: [Int: [ControlledWrite]] = [:]
 
   init(
     ids: Set<Int> = [],
@@ -477,6 +545,9 @@ actor InMemoryFavoritesRepository: FavoritesRepository {
     case .cancellation(let delay):
       try await Task.sleep(for: delay)
       throw CancellationError()
+    case .controlled:
+      try await waitForControlledWrite(repositoryID: repositoryID)
+      setPersistedValue(isFavorite, repositoryID: repositoryID)
     case .suspendUntilCancelled:
       do {
         try await Task.sleep(for: .seconds(3_600))
@@ -501,6 +572,77 @@ actor InMemoryFavoritesRepository: FavoritesRepository {
 
   func cancelledWriteCount() -> Int {
     cancelledWrites
+  }
+
+  func completeNextControlledWrite(
+    repositoryID: Int,
+    result: FavoriteControlledWriteResult
+  ) -> Bool {
+    guard
+      var continuations = controlledWrites[repositoryID],
+      !continuations.isEmpty
+    else {
+      return false
+    }
+
+    let controlledWrite = continuations.removeFirst()
+    controlledWrites[repositoryID] = continuations
+
+    switch result {
+    case .success:
+      controlledWrite.continuation.resume()
+    case .failure:
+      controlledWrite.continuation.resume(throwing: FavoriteTestError.failure)
+    case .cancellation:
+      controlledWrite.continuation.resume(throwing: CancellationError())
+    }
+
+    return true
+  }
+
+  func pendingControlledWriteCount() -> Int {
+    controlledWrites.values.reduce(0) { $0 + $1.count }
+  }
+
+  private func waitForControlledWrite(repositoryID: Int) async throws {
+    let controlledWriteID = UUID()
+
+    try await withTaskCancellationHandler {
+      try await withCheckedThrowingContinuation {
+        (continuation: CheckedContinuation<Void, any Error>) in
+        guard !Task.isCancelled else {
+          continuation.resume(throwing: CancellationError())
+          return
+        }
+
+        controlledWrites[repositoryID, default: []].append(
+          ControlledWrite(
+            id: controlledWriteID,
+            continuation: continuation
+          )
+        )
+      }
+    } onCancel: {
+      Task {
+        await self.cancelControlledWrite(
+          id: controlledWriteID,
+          repositoryID: repositoryID
+        )
+      }
+    }
+  }
+
+  private func cancelControlledWrite(id: UUID, repositoryID: Int) {
+    guard
+      var controlledWritesForRepository = controlledWrites[repositoryID],
+      let index = controlledWritesForRepository.firstIndex(where: { $0.id == id })
+    else {
+      return
+    }
+
+    let controlledWrite = controlledWritesForRepository.remove(at: index)
+    controlledWrites[repositoryID] = controlledWritesForRepository
+    controlledWrite.continuation.resume(throwing: CancellationError())
   }
 
   private func nextWriteBehavior(repositoryID: Int) -> FavoriteWriteBehavior {

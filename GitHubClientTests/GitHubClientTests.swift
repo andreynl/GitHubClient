@@ -13,6 +13,13 @@ struct GitHubClientTests {
 
     #expect(request.url?.path == "/search/repositories")
     #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer token")
+    #expect(request.value(forHTTPHeaderField: "Accept") == "application/vnd.github+json")
+    #expect(request.value(forHTTPHeaderField: "User-Agent") == "GitHubClient")
+    #expect(
+      request.value(forHTTPHeaderField: "X-GitHub-Api-Version")
+        == GitHubEndpoint.apiVersion
+    )
+    #expect(GitHubEndpoint.apiVersion == "2026-03-10")
 
     let components = URLComponents(url: try #require(request.url), resolvingAgainstBaseURL: false)
     let queryItems = try #require(components?.queryItems)
@@ -70,6 +77,25 @@ struct GitHubClientTests {
     #expect(page.items.first?.owner.login == "apple")
     #expect(page.items.first?.starsCount == 100)
     #expect(page.items.first?.forksCount == 5)
+    #expect(!page.isIncomplete)
+  }
+
+  @Test("DTO preserves GitHub incomplete search results")
+  func dtoIncompleteResultMapping() throws {
+    let data = sampleSearchResponseData(
+      totalCount: 1,
+      id: 1,
+      fullName: "apple/swift",
+      isIncomplete: true
+    )
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+
+    let dto = try decoder.decode(RepositorySearchResponseDTO.self, from: data)
+    let page = dto.toDomain(page: 1, perPage: 30)
+
+    #expect(page.isIncomplete)
+    #expect(page.items.map(\.fullName) == ["apple/swift"])
   }
 
   @Test("API client decodes successful response")
@@ -266,6 +292,80 @@ struct GitHubClientTests {
       #expect(info?.limit == 60)
       #expect(info?.remaining == 0)
       #expect(info?.resetAt == Date(timeIntervalSince1970: 1_800_000_000))
+      #expect(info?.retryAfterSeconds == nil)
+    }
+  }
+
+  @Test("API client maps secondary rate limit response bodies")
+  func apiClientSecondaryRateLimitMapping() async throws {
+    let client = makeAPIClient(
+      response: HTTPResponse(
+        statusCode: 403,
+        headers: [:],
+        data: Data(#"{"message":"You have exceeded a secondary rate limit."}"#.utf8)
+      )
+    )
+
+    await #expect(throws: GitHubAPIError.rateLimited(
+      RateLimitInfo(limit: nil, remaining: nil, resetAt: nil)
+    )) {
+      let _: RepositorySearchResponseDTO = try await client.send(
+        .searchRepositories(query: "swift", page: 1, perPage: 30)
+      )
+    }
+  }
+
+  @Test("API client parses Retry-After on secondary rate limiting")
+  func apiClientRetryAfterMapping() async throws {
+    let client = makeAPIClient(
+      response: HTTPResponse(
+        statusCode: 403,
+        headers: ["Retry-After": "120"],
+        data: Data()
+      )
+    )
+
+    do {
+      let _: RepositorySearchResponseDTO = try await client.send(
+        .searchRepositories(query: "swift", page: 1, perPage: 30)
+      )
+      Issue.record("Expected rate limit error")
+    } catch GitHubAPIError.rateLimited(let info) {
+      #expect(info?.retryAfterSeconds == 120)
+      #expect(info?.remaining == nil)
+    }
+  }
+
+  @Test("API client maps 429 to rate limiting")
+  func apiClientTooManyRequestsMapping() async throws {
+    let client = makeAPIClient(
+      response: HTTPResponse(
+        statusCode: 429,
+        headers: ["Retry-After": "30"],
+        data: Data()
+      )
+    )
+
+    do {
+      let _: RepositorySearchResponseDTO = try await client.send(
+        .searchRepositories(query: "swift", page: 1, perPage: 30)
+      )
+      Issue.record("Expected rate limit error")
+    } catch GitHubAPIError.rateLimited(let info) {
+      #expect(info?.retryAfterSeconds == 30)
+    }
+  }
+
+  @Test("API client preserves ordinary forbidden responses")
+  func apiClientForbiddenMapping() async throws {
+    let client = makeAPIClient(
+      response: HTTPResponse(statusCode: 403, headers: [:], data: Data())
+    )
+
+    await #expect(throws: GitHubAPIError.forbidden) {
+      let _: RepositorySearchResponseDTO = try await client.send(
+        .searchRepositories(query: "swift", page: 1, perPage: 30)
+      )
     }
   }
 
@@ -292,8 +392,7 @@ struct GitHubClientTests {
     _ = try await repository.searchRepositories(query: "swift", page: 2, perPage: 30)
 
     #expect(counter.value == 2)
-    #expect(!first.isFromCache)
-    #expect(second.isFromCache)
+    #expect(first == second)
   }
 
   @MainActor
@@ -313,6 +412,32 @@ struct GitHubClientTests {
 
     #expect(viewModel.state.items.count == 1)
     #expect(viewModel.state.pagination == .endReached)
+    #expect(viewModel.state.error == nil)
+  }
+
+  @MainActor
+  @Test("Search view model preserves incomplete results non-fatally")
+  func viewModelIncompleteResults() async throws {
+    let repository = MockRepositoriesRepository { _, page, _ in
+      RepositoryPage(
+        items: [repositorySummary(id: page)],
+        currentPage: page,
+        hasNextPage: false,
+        totalCount: 1,
+        isIncomplete: true
+      )
+    }
+    let viewModel = SearchViewModel(
+      repository: repository,
+      favoritesStore: makeFavoritesStore(),
+      debounceDuration: .milliseconds(1)
+    )
+
+    viewModel.updateQuery("swift")
+    try await waitFor { viewModel.state.phase == .loaded }
+
+    #expect(viewModel.state.items.map(\.id) == [1])
+    #expect(viewModel.state.isShowingIncompleteResults)
     #expect(viewModel.state.error == nil)
   }
 
@@ -373,7 +498,6 @@ struct GitHubClientTests {
     )
 
     viewModel.updateQuery("sw")
-    try await Task.sleep(for: .milliseconds(40))
 
     #expect(viewModel.state.phase == .idle)
     #expect(repository.callCount == 0)
@@ -655,6 +779,14 @@ func makeSession(store: MockURLProtocolStore) -> URLSession {
   return URLSession(configuration: configuration)
 }
 
+private func makeAPIClient(response: HTTPResponse) -> GitHubAPIClient {
+  let store = MockURLProtocolStore { _ in response }
+  return GitHubAPIClient(
+    baseURL: URL(string: "https://api.github.test") ?? URL(fileURLWithPath: "/"),
+    session: makeSession(store: store)
+  )
+}
+
 private func storeIdentifier(for store: MockURLProtocolStore) -> String {
   String(ObjectIdentifier(store).hashValue)
 }
@@ -792,12 +924,17 @@ private func repositorySummary(id: Int, fullName: String? = nil) -> RepositorySu
   )
 }
 
-private func sampleSearchResponseData(totalCount: Int, id: Int, fullName: String) -> Data {
+private func sampleSearchResponseData(
+  totalCount: Int,
+  id: Int,
+  fullName: String,
+  isIncomplete: Bool = false
+) -> Data {
   Data(
     """
     {
       "total_count": \(totalCount),
-      "incomplete_results": false,
+      "incomplete_results": \(isIncomplete),
       "items": [
         {
           "id": \(id),

@@ -67,12 +67,12 @@ struct RepositoryDetailsView: View {
 
   private func favoriteAccessibilityLabel(_ details: RepositoryDetails) -> String {
     guard viewModel.favoritesAreLoaded else {
-      return "Loading favorite status for \(details.fullName)"
+      return String(localized: "Loading favorite status for \(details.fullName)")
     }
 
     return viewModel.isFavorite(repositoryID: details.id)
-      ? "Remove \(details.fullName) from favorites"
-      : "Add \(details.fullName) to favorites"
+      ? String(localized: "Remove \(details.fullName) from favorites")
+      : String(localized: "Add \(details.fullName) to favorites")
   }
 
   private func detailsContent(_ details: RepositoryDetails) -> some View {
@@ -332,3 +332,51 @@ private struct ExternalLinkRow: View {
     .accessibilityHint(accessibilityHint)
   }
 }
+
+#if DEBUG
+struct RepositoryDetailsView_Previews: PreviewProvider {
+  static var previews: some View {
+    Group {
+      NavigationStack {
+        RepositoryDetailsView(
+          viewModel: PreviewFactory.detailsViewModel(
+            response: .pending,
+            favorite: false
+          )
+        )
+      }
+      .previewDisplayName("Loading")
+
+      NavigationStack {
+        RepositoryDetailsView(
+          viewModel: PreviewFactory.detailsViewModel(
+            response: .success(PreviewData.details),
+            favorite: true
+          )
+        )
+      }
+      .previewDisplayName("Loaded favorite")
+
+      NavigationStack {
+        RepositoryDetailsView(
+          viewModel: PreviewFactory.detailsViewModel(
+            response: .success(PreviewData.details),
+            favorite: false
+          )
+        )
+      }
+      .previewDisplayName("Loaded non-favorite")
+
+      NavigationStack {
+        RepositoryDetailsView(
+          viewModel: PreviewFactory.detailsViewModel(
+            response: .failure(.offline),
+            favorite: false
+          )
+        )
+      }
+      .previewDisplayName("Error")
+    }
+  }
+}
+#endif

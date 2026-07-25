@@ -31,6 +31,16 @@ struct SearchView: View {
     case .failed:
       errorView(viewModel.state.error)
     case .loaded:
+      if viewModel.state.isShowingIncompleteResults {
+        Label(
+          "GitHub returned partial results.",
+          systemImage: "exclamationmark.circle"
+        )
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+        .accessibilityLabel("GitHub returned partial repository search results")
+      }
+
       ForEach(viewModel.state.items) { repository in
         HStack(spacing: 8) {
           NavigationLink(
@@ -134,11 +144,61 @@ private struct FavoriteButton: View {
 
   private var accessibilityLabel: String {
     guard isLoaded else {
-      return "Loading favorite status for \(repositoryName)"
+      return String(localized: "Loading favorite status for \(repositoryName)")
     }
 
     return isFavorite
-      ? "Remove \(repositoryName) from favorites"
-      : "Add \(repositoryName) to favorites"
+      ? String(localized: "Remove \(repositoryName) from favorites")
+      : String(localized: "Add \(repositoryName) to favorites")
   }
 }
+
+#if DEBUG
+struct SearchView_Previews: PreviewProvider {
+  static var previews: some View {
+    Group {
+      NavigationStack {
+        SearchView(
+          viewModel: PreviewFactory.searchViewModel(
+            response: .success(
+              RepositoryPage(
+                items: [PreviewData.summary],
+                currentPage: 1,
+                hasNextPage: false,
+                totalCount: 1,
+                isIncomplete: true
+              )
+            )
+          )
+        )
+      }
+      .previewDisplayName("Partial results")
+
+      NavigationStack {
+        SearchView(
+          viewModel: PreviewFactory.searchViewModel(
+            response: .success(
+              RepositoryPage(
+                items: [],
+                currentPage: 1,
+                hasNextPage: false,
+                totalCount: 0
+              )
+            )
+          )
+        )
+      }
+      .previewDisplayName("Empty")
+
+      NavigationStack {
+        SearchView(
+          viewModel: PreviewFactory.searchViewModel(
+            response: .failure(.offline)
+          )
+        )
+      }
+      .previewDisplayName("Error")
+    }
+  }
+}
+#endif

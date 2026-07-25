@@ -79,8 +79,16 @@ implementations.
 `GitHubRepositoriesRepository` is the boundary that maps `GitHubAPIError` into
 stable `AppError` values. GitHub diagnostics remain in Data.
 
-The search and details caches are actor-isolated, cache-first, process-local,
-and currently have no expiration or capacity policy.
+All REST requests receive the centrally defined GitHub API version header
+`X-GitHub-Api-Version: 2026-03-10`. Primary exhaustion, secondary throttling,
+and HTTP 429 responses share the stable rate-limited application error without
+automatic retry loops.
+
+The search and details caches are actor-isolated, cache-first, and process
+local. Both use a centralized five-minute freshness policy, bounded capacities
+(100 search pages and 50 details records), and deterministic least-recently-used
+eviction. A synchronous `CacheClock` abstraction keeps freshness tests
+independent from wall-clock delays.
 
 Favorites persistence stores a JSON-encoded sorted array of repository IDs. It
 does not persist repository DTOs or full search results.
@@ -159,4 +167,12 @@ concurrency, retry, refresh, and partial failures.
 Controlled continuations are used for the most involved favorites concurrency
 tests. Some older tests still use short sleeps or bounded polling; therefore
 the suite reduces timing dependence but does not eliminate it. There is
-currently no UI-test target or CI workflow.
+currently no UI-test target.
+
+GitHub Actions validates committed whitespace, builds the app, runs the unit
+suite, and runs `xcodebuild analyze`. Compiler and analyzer warnings are treated
+as errors.
+
+User-facing English strings are collected in a String Catalog where practical,
+including pluralization for partial favorite-load failures. English remains the
+only localization.

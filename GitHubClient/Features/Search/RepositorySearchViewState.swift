@@ -19,5 +19,5 @@ struct RepositorySearchViewState: Equatable, Sendable {
   var phase: RepositorySearchPhase = .idle
   var pagination: PaginationState = .idle
   var error: AppError?
-  var isShowingCachedData: Bool = false
+  var isShowingIncompleteResults: Bool = false
 }

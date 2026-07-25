@@ -14,12 +14,32 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Print Xcode version
         run: xcodebuild -version
 
-      - name: Validate repository
-        run: git diff --check
+      - name: Validate committed changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          zero_sha='0000000000000000000000000000000000000000'
+          if [[ "$EVENT_NAME" == 'pull_request' ]]; then
+            merge_base="$(git merge-base HEAD "origin/$BASE_REF")"
+            git diff --check "$merge_base"...HEAD
+          elif [[ -n "$BEFORE_SHA" && "$BEFORE_SHA" != "$zero_sha" ]] &&
+            git cat-file -e "$BEFORE_SHA^{commit}"
+          then
+            git diff --check "$BEFORE_SHA"..HEAD
+          else
+            git show --check --oneline HEAD
+          fi
+
+          git diff --check
+          test -z "$(git status --porcelain)"
 
       - name: Select simulator
         run: |
@@ -79,3 +99,16 @@ jobs:
             echo "Tests produced warnings."
             exit 1
           fi
+
+      - name: Analyze
+        run: |
+          xcodebuild -quiet \
+            -project GitHubClient.xcodeproj \
+            -scheme GitHubClient \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/GitHubClientAnalyzeDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES \
+            GCC_TREAT_WARNINGS_AS_ERRORS=YES \
+            analyze

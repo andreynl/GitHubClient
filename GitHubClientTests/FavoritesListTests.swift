@@ -362,7 +362,7 @@ struct FavoritesListTests {
       responses: [
         1: [
           .success(summary(id: 1), delay: .zero),
-          .success(summary(id: 1, fullName: "owner/new"), delay: .seconds(2)),
+          .controlled,
         ],
       ]
     )
@@ -371,8 +371,17 @@ struct FavoritesListTests {
     try await waitUntil { context.viewModel.visibleRepositories.count == 1 }
 
     let refresh = Task { await context.viewModel.refresh() }
-    try await Task.sleep(for: .milliseconds(20))
+    try await waitUntil {
+      await context.repository.knowsControlledRequest(id: 1, occurrence: 2)
+    }
     context.viewModel.cancel()
+    #expect(
+      await context.repository.completeControlled(
+        id: 1,
+        occurrence: 2,
+        result: .failure(.cancelled)
+      )
+    )
     await refresh.value
 
     #expect(context.viewModel.visibleRepositories.map(\.fullName) == ["owner/repo-1"])
@@ -385,14 +394,23 @@ struct FavoritesListTests {
     let context = makeContext(
       ids: [1],
       responses: [
-        1: [.success(summary(id: 1), delay: .seconds(2))],
+        1: [.controlled],
       ]
     )
     await context.store.load()
     context.viewModel.synchronize()
-    try await Task.sleep(for: .milliseconds(20))
+    try await waitUntil {
+      await context.repository.knowsControlledRequest(id: 1, occurrence: 1)
+    }
 
     context.viewModel.cancel()
+    #expect(
+      await context.repository.completeControlled(
+        id: 1,
+        occurrence: 1,
+        result: .failure(.cancelled)
+      )
+    )
 
     try await waitUntil { await context.repository.cancelledRequestCount() == 1 }
     #expect(context.viewModel.state == .idle)
@@ -655,6 +673,10 @@ private actor FavoritesScreenRepositoryFake: RepositoriesRepository {
       cancellations += 1
       throw CancellationError()
     } catch {
+      if Task.isCancelled {
+        cancellations += 1
+        throw CancellationError()
+      }
       throw error
     }
   }

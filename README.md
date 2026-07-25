@@ -19,7 +19,8 @@ persisted list of favorites.
 
 ## Implementation
 
-- Swift 6 language mode
+- Built with Xcode 26 and its Swift toolchain, currently compiled in Swift 5
+  language mode
 - SwiftUI and the Observation framework
 - MVVM with folder-level Presentation, Domain, and Data boundaries
 - Repository protocols and constructor-based dependency injection
@@ -29,6 +30,8 @@ persisted list of favorites.
   stale-response protection
 - URLSession and the GitHub REST API
 - Swift Testing with controlled fakes and isolated persistence tests
+- A GitHub Actions pipeline that validates committed whitespace, builds, tests,
+  and runs the static analyzer with warnings treated as errors
 
 The live configuration uses GitHub's unauthenticated public API. An access-token
 provider can be injected into the API client, but the application does not ship
@@ -64,8 +67,13 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) and the accepted decisions under
 
 ## Requirements
 
-Validation for this revision uses Xcode 26.6 and an installed iOS Simulator
-runtime. The current project deployment target is iOS 26.0.
+Validation for this revision uses Xcode 26.6, the iOS 26.5 SDK, and an iOS 26.5
+Simulator runtime. The app and test targets deploy to iOS 26.0 and support
+iPhone and iPad.
+
+The current unit suite contains 95 Swift Testing tests. English is the only
+provided localization; a String Catalog establishes localization and
+pluralization infrastructure.
 
 ## Build
 
@@ -81,6 +89,11 @@ xcodebuild \
   CODE_SIGNING_ALLOWED=NO \
   build
 ```
+
+`CODE_SIGNING_ALLOWED=NO` is appropriate for compilation, analyzer, and unit
+test validation. Do not install that unsigned product to validate native Launch
+Screen behavior: unsigned Simulator builds can trigger a SplashBoard security
+fallback. Validate the Launch Screen with a normally signed Simulator build.
 
 To choose a simulator for tests:
 

@@ -14,7 +14,8 @@ nonisolated struct RepositorySearchResponseDTO: Decodable, Sendable {
       items: items.map { $0.toDomain() },
       currentPage: page,
       hasNextPage: page * perPage < totalCount,
-      totalCount: totalCount
+      totalCount: totalCount,
+      isIncomplete: incompleteResults
     )
   }
 }

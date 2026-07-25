@@ -67,6 +67,11 @@ approved hardening scope.
 Persistence tests must use isolated UserDefaults suites and clean their
 persistent domains.
 
+Cache tests must use the injected cache clock instead of waiting for wall-clock
+time. Existing bounded polling and a small number of legacy delay-driven
+concurrency tests remain documented debt; new ordering tests must use
+controlled synchronization.
+
 ## Validation
 
 Discover available simulators before testing:
@@ -87,6 +92,11 @@ xcodebuild \
   build
 ```
 
+`CODE_SIGNING_ALLOWED=NO` is appropriate for compilation, analyzer, and unit
+test validation. Do not install that unsigned product to validate native Launch
+Screen behavior: unsigned Simulator builds can trigger a SplashBoard security
+fallback. Validate the Launch Screen with a normally signed Simulator build.
+
 Run tests using an available simulator:
 
 ```bash
@@ -106,8 +116,10 @@ git diff --check
 git status --short --branch
 ```
 
-Report test counts and any compiler or analyzer warnings. Do not stage, commit,
-amend, or push unless the task explicitly authorizes it.
+Run `xcodebuild analyze` with the same project, scheme, destination, and
+warnings-as-errors settings before public-release changes. Report test counts
+and any compiler or analyzer warnings. Do not stage, commit, amend, or push
+unless the task explicitly authorizes it.
 
 ## Git Hygiene
 

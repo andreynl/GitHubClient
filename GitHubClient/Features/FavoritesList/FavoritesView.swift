@@ -103,13 +103,9 @@ struct FavoritesView: View {
     isRetrying: Bool
   ) -> some View {
     VStack(alignment: .leading, spacing: 8) {
-      Text(
-        failedCount == 1
-          ? "One favorite couldn’t be loaded."
-          : "\(failedCount) favorites couldn’t be loaded."
-      )
-      .font(.footnote)
-      .foregroundStyle(.secondary)
+      Text("\(failedCount) favorites couldn’t be loaded.")
+        .font(.footnote)
+        .foregroundStyle(.secondary)
 
       Button("Retry unavailable favorites") {
         viewModel.retry()
@@ -143,3 +139,14 @@ private struct FavoritesSynchronizationID: Equatable {
   let isLoaded: Bool
   let repositoryIDs: [Int]
 }
+
+#if DEBUG
+struct FavoritesView_Previews: PreviewProvider {
+  static var previews: some View {
+    NavigationStack {
+      FavoritesView(viewModel: PreviewFactory.favoritesViewModel())
+    }
+    .previewDisplayName("Partial failure")
+  }
+}
+#endif

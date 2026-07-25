@@ -147,7 +147,7 @@ final class SearchViewModel {
     state.phase = .initialLoading
     state.pagination = .idle
     state.error = nil
-    state.isShowingCachedData = false
+    state.isShowingIncompleteResults = false
 
     do {
       let page = try await repository.searchRepositories(query: query, page: 1, perPage: perPage)
@@ -163,7 +163,7 @@ final class SearchViewModel {
       state.phase = page.items.isEmpty ? .empty : .loaded
       state.pagination = page.hasNextPage ? .idle : .endReached
       state.error = nil
-      state.isShowingCachedData = page.isFromCache
+      state.isShowingIncompleteResults = page.isIncomplete
       searchTask = nil
     } catch {
       if isCancellation(error) {
@@ -181,7 +181,7 @@ final class SearchViewModel {
       state.phase = .failed
       state.pagination = .idle
       state.error = mapError(error)
-      state.isShowingCachedData = false
+      state.isShowingIncompleteResults = false
       searchTask = nil
     }
   }
@@ -203,7 +203,8 @@ final class SearchViewModel {
       state.phase = state.items.isEmpty ? .empty : .loaded
       state.pagination = repositoryPage.hasNextPage ? .idle : .endReached
       state.error = nil
-      state.isShowingCachedData = state.isShowingCachedData && repositoryPage.isFromCache
+      state.isShowingIncompleteResults =
+        state.isShowingIncompleteResults || repositoryPage.isIncomplete
       paginationTask = nil
     } catch {
       if isCancellation(error) {

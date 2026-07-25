@@ -1,6 +1,8 @@
 import Foundation
 
 nonisolated struct GitHubEndpoint: Equatable, Sendable {
+  static let apiVersion = "2026-03-10"
+
   let path: String
   let queryItems: [URLQueryItem]
   let acceptHeader: String
@@ -56,6 +58,7 @@ nonisolated struct GitHubEndpoint: Equatable, Sendable {
     request.httpMethod = "GET"
     request.setValue(acceptHeader, forHTTPHeaderField: "Accept")
     request.setValue("GitHubClient", forHTTPHeaderField: "User-Agent")
+    request.setValue(Self.apiVersion, forHTTPHeaderField: "X-GitHub-Api-Version")
 
     if let accessToken, !accessToken.isEmpty {
       request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")

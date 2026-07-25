@@ -49,7 +49,7 @@ actor GitHubAPIClient {
         )
       }
 
-      try validate(httpResponse)
+      try validate(httpResponse, data: data)
       return data
     } catch let error as GitHubAPIError {
       throw error
@@ -66,13 +66,13 @@ actor GitHubAPIClient {
     }
   }
 
-  private func validate(_ response: HTTPURLResponse) throws {
+  private func validate(_ response: HTTPURLResponse, data: Data) throws {
     switch response.statusCode {
     case 200..<300:
       return
     case 401:
       throw GitHubAPIError.unauthorized
-    case 403 where isRateLimited(response):
+    case 403 where isRateLimited(response, data: data):
       throw GitHubAPIError.rateLimited(rateLimitInfo(from: response))
     case 429:
       throw GitHubAPIError.rateLimited(rateLimitInfo(from: response))
@@ -87,9 +87,18 @@ actor GitHubAPIClient {
     }
   }
 
-  private func isRateLimited(_ response: HTTPURLResponse) -> Bool {
+  private func isRateLimited(_ response: HTTPURLResponse, data: Data) -> Bool {
     let remaining = header("x-ratelimit-remaining", in: response).flatMap(Int.init)
-    return response.statusCode == 429 || remaining == 0
+    let retryAfter = header("retry-after", in: response).flatMap(Int.init)
+    let message = (try? decoder.decode(GitHubErrorResponse.self, from: data).message)?
+      .lowercased()
+    let isSecondaryLimit =
+      message?.contains("secondary rate limit") == true
+      || message?.contains("abuse detection") == true
+    return response.statusCode == 429
+      || remaining == 0
+      || retryAfter != nil
+      || isSecondaryLimit
   }
 
   private func rateLimitInfo(from response: HTTPURLResponse) -> RateLimitInfo {
@@ -98,8 +107,14 @@ actor GitHubAPIClient {
     let resetAt = header("x-ratelimit-reset", in: response)
       .flatMap(TimeInterval.init)
       .map { Date(timeIntervalSince1970: $0) }
+    let retryAfterSeconds = header("retry-after", in: response).flatMap(Int.init)
 
-    return RateLimitInfo(limit: limit, remaining: remaining, resetAt: resetAt)
+    return RateLimitInfo(
+      limit: limit,
+      remaining: remaining,
+      resetAt: resetAt,
+      retryAfterSeconds: retryAfterSeconds
+    )
   }
 
   private func header(_ name: String, in response: HTTPURLResponse) -> String? {
@@ -107,4 +122,8 @@ actor GitHubAPIClient {
       String(describing: key).caseInsensitiveCompare(name) == .orderedSame
     }?.value as? String
   }
+}
+
+private nonisolated struct GitHubErrorResponse: Decodable {
+  let message: String
 }

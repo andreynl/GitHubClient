@@ -27,7 +27,9 @@ nonisolated enum AppError: Error, Equatable, Sendable {
     case .forbidden:
       "GitHub blocked the request."
     case .rateLimited(let info):
-      if let resetAt = info?.resetAt {
+      if let retryAfterSeconds = info?.retryAfterSeconds {
+        "GitHub rate limit reached. Try again in \(retryAfterSeconds) seconds."
+      } else if let resetAt = info?.resetAt {
         "GitHub rate limit reached. Try again after \(resetAt.formatted(date: .omitted, time: .shortened))."
       } else {
         "GitHub rate limit reached. Try again later."

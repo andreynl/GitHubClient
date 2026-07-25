@@ -72,6 +72,22 @@ not promise unscheduled product features.
 - Add GitHub Actions build and test validation
 - Correct roadmap status and clarify the cross-layer `AppError` contract
 
+### Repository Remediation
+
+- Align app and test deployment targets with the intended iOS 26.0 baseline
+- Document the verified Swift 5 language mode used by the Xcode 26 toolchain
+- Validate committed whitespace ranges and add static analysis in CI
+- Pin the GitHub REST API version and classify primary and secondary throttling
+- Propagate GitHub incomplete-search responses as non-fatal presentation state
+- Add bounded, expiring in-memory caches with deterministic eviction and clocks
+- Add deterministic local SwiftUI preview dependencies
+- Add an English String Catalog and pluralized partial-failure copy
+- Harden the static launch layout without modifying the approved artwork
+- Complete signed iPhone and iPad Launch Screen runtime validation
+- Confirm the black fallback came from installing a build produced with
+  `CODE_SIGNING_ALLOWED=NO`; signed Simulator builds render the approved Light
+  and Dark artwork correctly
+
 ## Planned
 
 ### Phase 6
@@ -81,9 +97,7 @@ identified by the production-readiness review include:
 
 - favorites persistence failure presentation
 - recoverable cancellation UI states
-- explicit cache capacity and freshness
-- GitHub secondary rate-limit handling
-- more deterministic asynchronous tests
+- replace remaining delay-driven asynchronous unit tests with controlled gates
 - minimal UI smoke coverage
 
 These are candidates, not completed or committed scope.
@@ -95,4 +109,4 @@ These are candidates, not completed or committed scope.
 - advanced search filters and history
 - repository sorting
 - user profiles
-- localization
+- additional localizations
