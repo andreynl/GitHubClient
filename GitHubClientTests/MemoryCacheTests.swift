@@ -22,9 +22,7 @@ struct MemoryCacheTests {
     )
 
     await cache.store(page, for: key)
-    let fresh = await cache.value(for: key)
-    #expect(fresh?.items.map(\.id) == [1])
-    #expect(fresh?.isIncomplete == true)
+    #expect(await cache.value(for: key) == page)
 
     clock.advance(by: 300)
     #expect(await cache.value(for: key) == nil)

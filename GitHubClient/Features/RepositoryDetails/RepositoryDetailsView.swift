@@ -334,49 +334,47 @@ private struct ExternalLinkRow: View {
 }
 
 #if DEBUG
-struct RepositoryDetailsView_Previews: PreviewProvider {
-  static var previews: some View {
-    Group {
-      NavigationStack {
-        RepositoryDetailsView(
-          viewModel: PreviewFactory.detailsViewModel(
-            response: .pending,
-            favorite: false
-          )
-        )
-      }
-      .previewDisplayName("Loading")
+#Preview("Loading") {
+  NavigationStack {
+    RepositoryDetailsView(
+      viewModel: PreviewFactory.detailsViewModel(
+        response: .pending,
+        favorite: false
+      )
+    )
+  }
+}
 
-      NavigationStack {
-        RepositoryDetailsView(
-          viewModel: PreviewFactory.detailsViewModel(
-            response: .success(PreviewData.details),
-            favorite: true
-          )
-        )
-      }
-      .previewDisplayName("Loaded favorite")
+#Preview("Loaded favorite") {
+  NavigationStack {
+    RepositoryDetailsView(
+      viewModel: PreviewFactory.detailsViewModel(
+        response: .success(PreviewData.details),
+        favorite: true
+      )
+    )
+  }
+}
 
-      NavigationStack {
-        RepositoryDetailsView(
-          viewModel: PreviewFactory.detailsViewModel(
-            response: .success(PreviewData.details),
-            favorite: false
-          )
-        )
-      }
-      .previewDisplayName("Loaded non-favorite")
+#Preview("Loaded non-favorite") {
+  NavigationStack {
+    RepositoryDetailsView(
+      viewModel: PreviewFactory.detailsViewModel(
+        response: .success(PreviewData.details),
+        favorite: false
+      )
+    )
+  }
+}
 
-      NavigationStack {
-        RepositoryDetailsView(
-          viewModel: PreviewFactory.detailsViewModel(
-            response: .failure(.offline),
-            favorite: false
-          )
-        )
-      }
-      .previewDisplayName("Error")
-    }
+#Preview("Error") {
+  NavigationStack {
+    RepositoryDetailsView(
+      viewModel: PreviewFactory.detailsViewModel(
+        response: .failure(.offline),
+        favorite: false
+      )
+    )
   }
 }
 #endif

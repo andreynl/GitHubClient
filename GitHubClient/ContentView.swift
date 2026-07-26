@@ -62,8 +62,8 @@ struct ContentView: View {
   }
 }
 
-struct ContentView_Previews: PreviewProvider {
-  static var previews: some View {
-    ContentView(container: PreviewFactory.container())
-  }
+#if DEBUG
+#Preview("Content") {
+  ContentView(container: PreviewFactory.container())
 }
+#endif

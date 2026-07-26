@@ -154,51 +154,48 @@ private struct FavoriteButton: View {
 }
 
 #if DEBUG
-struct SearchView_Previews: PreviewProvider {
-  static var previews: some View {
-    Group {
-      NavigationStack {
-        SearchView(
-          viewModel: PreviewFactory.searchViewModel(
-            response: .success(
-              RepositoryPage(
-                items: [PreviewData.summary],
-                currentPage: 1,
-                hasNextPage: false,
-                totalCount: 1,
-                isIncomplete: true
-              )
-            )
+#Preview("Partial results") {
+  NavigationStack {
+    SearchView(
+      viewModel: PreviewFactory.searchViewModel(
+        response: .success(
+          RepositoryPage(
+            items: [PreviewData.summary],
+            currentPage: 1,
+            hasNextPage: false,
+            totalCount: 1,
+            isIncomplete: true
           )
         )
-      }
-      .previewDisplayName("Partial results")
+      )
+    )
+  }
+}
 
-      NavigationStack {
-        SearchView(
-          viewModel: PreviewFactory.searchViewModel(
-            response: .success(
-              RepositoryPage(
-                items: [],
-                currentPage: 1,
-                hasNextPage: false,
-                totalCount: 0
-              )
-            )
+#Preview("Empty") {
+  NavigationStack {
+    SearchView(
+      viewModel: PreviewFactory.searchViewModel(
+        response: .success(
+          RepositoryPage(
+            items: [],
+            currentPage: 1,
+            hasNextPage: false,
+            totalCount: 0
           )
         )
-      }
-      .previewDisplayName("Empty")
+      )
+    )
+  }
+}
 
-      NavigationStack {
-        SearchView(
-          viewModel: PreviewFactory.searchViewModel(
-            response: .failure(.offline)
-          )
-        )
-      }
-      .previewDisplayName("Error")
-    }
+#Preview("Error") {
+  NavigationStack {
+    SearchView(
+      viewModel: PreviewFactory.searchViewModel(
+        response: .failure(.offline)
+      )
+    )
   }
 }
 #endif

@@ -3,14 +3,18 @@ import Observation
 @MainActor
 @Observable
 final class FavoritesStore {
+  private struct WriteIntent {
+    let isFavorite: Bool
+    let generation: Int
+  }
+
   private(set) var favoriteRepositoryIDs: Set<Int> = []
   private(set) var pendingRepositoryIDs: Set<Int> = []
   private(set) var isLoaded = false
 
   @ObservationIgnored private let repository: FavoritesRepository
   @ObservationIgnored private var persistedRepositoryIDs: Set<Int> = []
-  @ObservationIgnored private var desiredValues: [Int: Bool] = [:]
-  @ObservationIgnored private var versions: [Int: Int] = [:]
+  @ObservationIgnored private var writeIntents: [Int: WriteIntent] = [:]
   @ObservationIgnored private var writeTasks: [Int: Task<Void, Never>] = [:]
   @ObservationIgnored private var loadTask: Task<Set<Int>, Never>?
 
@@ -84,8 +88,11 @@ final class FavoritesStore {
       favoriteRepositoryIDs.remove(repositoryID)
     }
 
-    desiredValues[repositoryID] = isFavorite
-    versions[repositoryID, default: 0] += 1
+    let generation = (writeIntents[repositoryID]?.generation ?? 0) + 1
+    writeIntents[repositoryID] = WriteIntent(
+      isFavorite: isFavorite,
+      generation: generation
+    )
     pendingRepositoryIDs.insert(repositoryID)
   }
 
@@ -117,7 +124,7 @@ final class FavoritesStore {
             result,
             isFavorite: operation.isFavorite,
             repositoryID: repositoryID,
-            version: operation.version
+            generation: operation.generation
           ) == true
         else {
           return
@@ -126,36 +133,36 @@ final class FavoritesStore {
     }
   }
 
-  private func nextWrite(repositoryID: Int) -> (isFavorite: Bool, version: Int)? {
-    guard
-      let isFavorite = desiredValues[repositoryID],
-      let version = versions[repositoryID]
-    else {
+  private func nextWrite(repositoryID: Int) -> WriteIntent? {
+    guard let intent = writeIntents[repositoryID] else {
       writeTasks[repositoryID] = nil
       return nil
     }
 
-    return (isFavorite, version)
+    return intent
   }
 
   private func applyWriteResult(
     _ result: Result<Void, Error>,
     isFavorite: Bool,
     repositoryID: Int,
-    version: Int
+    generation: Int
   ) -> Bool {
     switch result {
     case .success:
       applyWriteSuccess(
         isFavorite,
         repositoryID: repositoryID,
-        version: version
+        generation: generation
       )
     case .failure:
-      applyWriteFailure(repositoryID: repositoryID, version: version)
+      applyWriteFailure(repositoryID: repositoryID, generation: generation)
     }
 
-    guard versions[repositoryID] != version, desiredValues[repositoryID] != nil else {
+    guard
+      let currentIntent = writeIntents[repositoryID],
+      currentIntent.generation != generation
+    else {
       writeTasks[repositoryID] = nil
       return false
     }
@@ -166,7 +173,7 @@ final class FavoritesStore {
   private func applyWriteSuccess(
     _ isFavorite: Bool,
     repositoryID: Int,
-    version: Int
+    generation: Int
   ) {
     if isFavorite {
       persistedRepositoryIDs.insert(repositoryID)
@@ -174,16 +181,16 @@ final class FavoritesStore {
       persistedRepositoryIDs.remove(repositoryID)
     }
 
-    guard versions[repositoryID] == version else {
+    guard writeIntents[repositoryID]?.generation == generation else {
       return
     }
 
-    desiredValues[repositoryID] = nil
+    writeIntents[repositoryID] = nil
     pendingRepositoryIDs.remove(repositoryID)
   }
 
-  private func applyWriteFailure(repositoryID: Int, version: Int) {
-    guard versions[repositoryID] == version else {
+  private func applyWriteFailure(repositoryID: Int, generation: Int) {
+    guard writeIntents[repositoryID]?.generation == generation else {
       return
     }
 
@@ -193,7 +200,7 @@ final class FavoritesStore {
       favoriteRepositoryIDs.remove(repositoryID)
     }
 
-    desiredValues[repositoryID] = nil
+    writeIntents[repositoryID] = nil
     pendingRepositoryIDs.remove(repositoryID)
   }
 }

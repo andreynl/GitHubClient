@@ -39,24 +39,12 @@ actor RepositorySearchMemoryCache {
     entry.accessOrder = nextAccessOrder()
     entries[key] = entry
 
-    return RepositoryPage(
-      items: entry.page.items,
-      currentPage: entry.page.currentPage,
-      hasNextPage: entry.page.hasNextPage,
-      totalCount: entry.page.totalCount,
-      isIncomplete: entry.page.isIncomplete
-    )
+    return entry.page
   }
 
   func store(_ page: RepositoryPage, for key: RepositorySearchCacheKey) {
     entries[key] = Entry(
-      page: RepositoryPage(
-        items: page.items,
-        currentPage: page.currentPage,
-        hasNextPage: page.hasNextPage,
-        totalCount: page.totalCount,
-        isIncomplete: page.isIncomplete
-      ),
+      page: page,
       storedAt: clock.now(),
       accessOrder: nextAccessOrder()
     )

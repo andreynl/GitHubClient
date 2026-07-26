@@ -15,8 +15,8 @@ final class SearchViewModel {
   @ObservationIgnored private var searchTask: Task<Void, Never>?
   @ObservationIgnored private var paginationTask: Task<Void, Never>?
   @ObservationIgnored private var activeRequestID = 0
-  @ObservationIgnored private var loadedPages: Set<Int> = []
-  @ObservationIgnored private var pagesInFlight: Set<Int> = []
+  @ObservationIgnored private var currentPage: Int?
+  @ObservationIgnored private var pageInFlight: Int?
   @ObservationIgnored private var hasNextPage = false
 
   init(
@@ -114,8 +114,8 @@ final class SearchViewModel {
       return
     }
 
-    let nextPage = (loadedPages.max() ?? 0) + 1
-    guard !loadedPages.contains(nextPage), !pagesInFlight.contains(nextPage) else {
+    let nextPage = (currentPage ?? 0) + 1
+    guard pageInFlight == nil else {
       return
     }
 
@@ -124,7 +124,7 @@ final class SearchViewModel {
       return
     }
 
-    pagesInFlight.insert(nextPage)
+    pageInFlight = nextPage
     state.pagination = .loadingNextPage
     state.error = nil
 
@@ -140,8 +140,8 @@ final class SearchViewModel {
       return
     }
 
-    loadedPages.removeAll()
-    pagesInFlight = [1]
+    currentPage = nil
+    pageInFlight = 1
     hasNextPage = false
     state.items = []
     state.phase = .initialLoading
@@ -155,8 +155,8 @@ final class SearchViewModel {
         return
       }
 
-      pagesInFlight.remove(1)
-      loadedPages = [page.currentPage]
+      pageInFlight = nil
+      currentPage = page.currentPage
       hasNextPage = page.hasNextPage
       state.query = query
       state.items = page.items
@@ -175,7 +175,7 @@ final class SearchViewModel {
         return
       }
 
-      pagesInFlight.remove(1)
+      pageInFlight = nil
       state.query = query
       state.items = []
       state.phase = .failed
@@ -193,8 +193,8 @@ final class SearchViewModel {
         return
       }
 
-      pagesInFlight.remove(page)
-      loadedPages.insert(repositoryPage.currentPage)
+      pageInFlight = nil
+      currentPage = repositoryPage.currentPage
       hasNextPage = repositoryPage.hasNextPage
 
       let existingIDs = Set(state.items.map(\.id))
@@ -208,7 +208,7 @@ final class SearchViewModel {
       paginationTask = nil
     } catch {
       if isCancellation(error) {
-        applyPaginationCancellation(query: query, page: page, requestID: requestID)
+        applyPaginationCancellation(query: query, requestID: requestID)
         return
       }
 
@@ -216,7 +216,7 @@ final class SearchViewModel {
         return
       }
 
-      pagesInFlight.remove(page)
+      pageInFlight = nil
       state.phase = state.items.isEmpty ? .failed : .loaded
       state.pagination = .failed(mapError(error))
       paginationTask = nil
@@ -228,19 +228,19 @@ final class SearchViewModel {
       return
     }
 
-    loadedPages.removeAll()
-    pagesInFlight.removeAll()
+    currentPage = nil
+    pageInFlight = nil
     hasNextPage = false
     state = RepositorySearchViewState(query: state.query)
     searchTask = nil
   }
 
-  private func applyPaginationCancellation(query: String, page: Int, requestID: Int) {
+  private func applyPaginationCancellation(query: String, requestID: Int) {
     guard matchesActiveRequest(query: query, requestID: requestID) else {
       return
     }
 
-    pagesInFlight.remove(page)
+    pageInFlight = nil
     state.phase = state.items.isEmpty ? .idle : .loaded
     state.pagination = .idle
     state.error = nil
@@ -248,8 +248,8 @@ final class SearchViewModel {
   }
 
   private func resetSearch() {
-    loadedPages.removeAll()
-    pagesInFlight.removeAll()
+    currentPage = nil
+    pageInFlight = nil
     hasNextPage = false
     state = RepositorySearchViewState()
   }

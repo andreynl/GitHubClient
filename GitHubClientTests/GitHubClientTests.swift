@@ -746,6 +746,160 @@ struct GitHubClientTests {
     #expect(viewModel.state.phase == .loaded)
     #expect(viewModel.state.error == nil)
   }
+
+  @MainActor
+  @Test("Stale pagination success preserves replacement request ownership")
+  func viewModelStalePaginationSuccessPreservesReplacementOwnership() async throws {
+    let repository = ControlledPaginationRepository(
+      initialPages: [
+        "swift": RepositoryPage(
+          items: [repositorySummary(id: 1)],
+          currentPage: 1,
+          hasNextPage: true,
+          totalCount: 2
+        ),
+        "swiftui": RepositoryPage(
+          items: [repositorySummary(id: 10)],
+          currentPage: 1,
+          hasNextPage: true,
+          totalCount: 2
+        ),
+      ]
+    )
+    let viewModel = SearchViewModel(
+      repository: repository,
+      favoritesStore: makeFavoritesStore(),
+      debounceDuration: .milliseconds(1)
+    )
+
+    viewModel.updateQuery("swift")
+    try await waitFor { viewModel.state.items.map(\.id) == [1] }
+    viewModel.loadNextPage()
+    await repository.waitUntilPageTwoStarts(query: "swift")
+
+    viewModel.updateQuery("swiftui")
+    try await waitFor { viewModel.state.items.map(\.id) == [10] }
+    viewModel.loadNextPage()
+    await repository.waitUntilPageTwoStarts(query: "swiftui")
+    viewModel.loadNextPage()
+
+    #expect(await repository.pageTwoCallCount(query: "swiftui") == 1)
+    #expect(
+      await repository.completePageTwo(
+        query: "swift",
+        result: .success(
+          RepositoryPage(
+            items: [repositorySummary(id: 2)],
+            currentPage: 2,
+            hasNextPage: false,
+            totalCount: 2
+          )
+        )
+      )
+    )
+    await repository.waitUntilPageTwoFinishes(query: "swift")
+    await waitForMainActorTurn()
+
+    #expect(viewModel.state.query == "swiftui")
+    #expect(viewModel.state.items.map(\.id) == [10])
+    #expect(viewModel.state.phase == .loaded)
+    #expect(viewModel.state.pagination == .loadingNextPage)
+    viewModel.loadNextPage()
+    #expect(await repository.pageTwoCallCount(query: "swiftui") == 1)
+
+    #expect(
+      await repository.completeAllPageTwo(
+        query: "swiftui",
+        result: .success(
+          RepositoryPage(
+            items: [repositorySummary(id: 11)],
+            currentPage: 2,
+            hasNextPage: false,
+            totalCount: 2
+          )
+        )
+      ) == 1
+    )
+    try await waitFor { viewModel.state.items.map(\.id) == [10, 11] }
+
+    #expect(viewModel.state.query == "swiftui")
+    #expect(viewModel.state.pagination == .endReached)
+    #expect(await repository.pageTwoCallCount(query: "swiftui") == 1)
+  }
+
+  @MainActor
+  @Test("Stale pagination cancellation preserves replacement request ownership")
+  func viewModelStalePaginationCancellationPreservesReplacementOwnership() async throws {
+    let repository = ControlledPaginationRepository(
+      initialPages: [
+        "swift": RepositoryPage(
+          items: [repositorySummary(id: 1)],
+          currentPage: 1,
+          hasNextPage: true,
+          totalCount: 2
+        ),
+        "swiftui": RepositoryPage(
+          items: [repositorySummary(id: 10)],
+          currentPage: 1,
+          hasNextPage: true,
+          totalCount: 2
+        ),
+      ]
+    )
+    let viewModel = SearchViewModel(
+      repository: repository,
+      favoritesStore: makeFavoritesStore(),
+      debounceDuration: .milliseconds(1)
+    )
+
+    viewModel.updateQuery("swift")
+    try await waitFor { viewModel.state.items.map(\.id) == [1] }
+    viewModel.loadNextPage()
+    await repository.waitUntilPageTwoStarts(query: "swift")
+
+    viewModel.updateQuery("swiftui")
+    try await waitFor { viewModel.state.items.map(\.id) == [10] }
+    viewModel.loadNextPage()
+    await repository.waitUntilPageTwoStarts(query: "swiftui")
+    viewModel.loadNextPage()
+
+    #expect(await repository.pageTwoCallCount(query: "swiftui") == 1)
+    #expect(
+      await repository.completePageTwo(
+        query: "swift",
+        result: .cancellation
+      )
+    )
+    await repository.waitUntilPageTwoFinishes(query: "swift")
+    await waitForMainActorTurn()
+
+    #expect(viewModel.state.query == "swiftui")
+    #expect(viewModel.state.items.map(\.id) == [10])
+    #expect(viewModel.state.phase == .loaded)
+    #expect(viewModel.state.pagination == .loadingNextPage)
+    #expect(viewModel.state.error == nil)
+    viewModel.loadNextPage()
+    #expect(await repository.pageTwoCallCount(query: "swiftui") == 1)
+
+    #expect(
+      await repository.completeAllPageTwo(
+        query: "swiftui",
+        result: .success(
+          RepositoryPage(
+            items: [repositorySummary(id: 11)],
+            currentPage: 2,
+            hasNextPage: false,
+            totalCount: 2
+          )
+        )
+      ) == 1
+    )
+    try await waitFor { viewModel.state.items.map(\.id) == [10, 11] }
+
+    #expect(viewModel.state.query == "swiftui")
+    #expect(viewModel.state.pagination == .endReached)
+    #expect(await repository.pageTwoCallCount(query: "swiftui") == 1)
+  }
 }
 
 struct HTTPResponse: Sendable {
@@ -780,9 +934,13 @@ func makeSession(store: MockURLProtocolStore) -> URLSession {
 }
 
 private func makeAPIClient(response: HTTPResponse) -> GitHubAPIClient {
+  guard let baseURL = URL(string: "https://api.github.test") else {
+    preconditionFailure("Invalid test API base URL")
+  }
+
   let store = MockURLProtocolStore { _ in response }
   return GitHubAPIClient(
-    baseURL: URL(string: "https://api.github.test") ?? URL(fileURLWithPath: "/"),
+    baseURL: baseURL,
     session: makeSession(store: store)
   )
 }
@@ -903,6 +1061,138 @@ private final class MockRepositoriesRepository: RepositoriesRepository, @uncheck
   }
 }
 
+private enum ControlledPaginationResult: Sendable {
+  case success(RepositoryPage)
+  case cancellation
+}
+
+private actor ControlledPaginationRepository: RepositoriesRepository {
+  private let initialPages: [String: RepositoryPage]
+  private var pageTwoCalls: [String: Int] = [:]
+  private var pageTwoContinuations: [
+    String: [CheckedContinuation<RepositoryPage, any Error>]
+  ] = [:]
+  private var pageTwoStartWaiters: [String: [CheckedContinuation<Void, Never>]] = [:]
+  private var finishedPageTwoQueries: Set<String> = []
+  private var pageTwoFinishWaiters: [String: [CheckedContinuation<Void, Never>]] = [:]
+
+  init(initialPages: [String: RepositoryPage]) {
+    self.initialPages = initialPages
+  }
+
+  func searchRepositories(
+    query: String,
+    page: Int,
+    perPage: Int
+  ) async throws -> RepositoryPage {
+    if page == 1, let initialPage = initialPages[query] {
+      return initialPage
+    }
+
+    guard page == 2 else {
+      throw AppError.notFound
+    }
+
+    pageTwoCalls[query, default: 0] += 1
+    let startWaiters = pageTwoStartWaiters.removeValue(forKey: query) ?? []
+    startWaiters.forEach { $0.resume() }
+
+    do {
+      let page = try await withCheckedThrowingContinuation {
+        (continuation: CheckedContinuation<RepositoryPage, any Error>) in
+        pageTwoContinuations[query, default: []].append(continuation)
+      }
+      markPageTwoFinished(query: query)
+      return page
+    } catch {
+      markPageTwoFinished(query: query)
+      throw error
+    }
+  }
+
+  func waitUntilPageTwoStarts(query: String) async {
+    guard pageTwoCalls[query, default: 0] == 0 else {
+      return
+    }
+
+    await withCheckedContinuation { continuation in
+      pageTwoStartWaiters[query, default: []].append(continuation)
+    }
+  }
+
+  func waitUntilPageTwoFinishes(query: String) async {
+    guard !finishedPageTwoQueries.contains(query) else {
+      return
+    }
+
+    await withCheckedContinuation { continuation in
+      pageTwoFinishWaiters[query, default: []].append(continuation)
+    }
+  }
+
+  func completePageTwo(
+    query: String,
+    result: ControlledPaginationResult
+  ) -> Bool {
+    guard
+      var continuations = pageTwoContinuations[query],
+      !continuations.isEmpty
+    else {
+      return false
+    }
+
+    let continuation = continuations.removeFirst()
+    pageTwoContinuations[query] = continuations
+    resume(continuation, with: result)
+    return true
+  }
+
+  func completeAllPageTwo(
+    query: String,
+    result: ControlledPaginationResult
+  ) -> Int {
+    let continuations = pageTwoContinuations.removeValue(forKey: query) ?? []
+    continuations.forEach { continuation in
+      resume(continuation, with: result)
+    }
+    return continuations.count
+  }
+
+  func pageTwoCallCount(query: String) -> Int {
+    pageTwoCalls[query, default: 0]
+  }
+
+  private func markPageTwoFinished(query: String) {
+    finishedPageTwoQueries.insert(query)
+    let finishWaiters = pageTwoFinishWaiters.removeValue(forKey: query) ?? []
+    finishWaiters.forEach { $0.resume() }
+  }
+
+  private func resume(
+    _ continuation: CheckedContinuation<RepositoryPage, any Error>,
+    with result: ControlledPaginationResult
+  ) {
+    switch result {
+    case .success(let page):
+      continuation.resume(returning: page)
+    case .cancellation:
+      continuation.resume(throwing: CancellationError())
+    }
+  }
+
+  func repositoryDetails(owner: String, name: String) async throws -> RepositoryDetails {
+    throw AppError.unknown
+  }
+
+  func repository(id: Int) async throws -> RepositorySummary {
+    throw AppError.unknown
+  }
+
+  func repositoryReadme(owner: String, name: String) async throws -> RepositoryReadme {
+    throw AppError.unknown
+  }
+}
+
 private struct CancellingAccessTokenProvider: AccessTokenProvider {
   func accessToken() async throws -> String? {
     throw CancellationError()
@@ -997,5 +1287,14 @@ private func waitFor(
       return
     }
     try await Task.sleep(for: .milliseconds(10))
+  }
+}
+
+@MainActor
+private func waitForMainActorTurn() async {
+  await withCheckedContinuation { continuation in
+    Task { @MainActor in
+      continuation.resume()
+    }
   }
 }

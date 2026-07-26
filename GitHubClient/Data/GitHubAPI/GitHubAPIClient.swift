@@ -1,13 +1,20 @@
 import Foundation
 
 actor GitHubAPIClient {
+  private nonisolated static let defaultBaseURL: URL = {
+    guard let url = URL(string: "https://api.github.com") else {
+      preconditionFailure("Invalid GitHub API base URL")
+    }
+    return url
+  }()
+
   private let baseURL: URL
   private let session: URLSession
   private let decoder: JSONDecoder
   private let accessTokenProvider: AccessTokenProvider?
 
   init(
-    baseURL: URL = URL(string: "https://api.github.com") ?? URL(fileURLWithPath: "/"),
+    baseURL: URL = GitHubAPIClient.defaultBaseURL,
     session: URLSession = .shared,
     accessTokenProvider: AccessTokenProvider? = nil
   ) {

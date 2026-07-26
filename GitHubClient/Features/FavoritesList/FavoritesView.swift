@@ -141,12 +141,9 @@ private struct FavoritesSynchronizationID: Equatable {
 }
 
 #if DEBUG
-struct FavoritesView_Previews: PreviewProvider {
-  static var previews: some View {
-    NavigationStack {
-      FavoritesView(viewModel: PreviewFactory.favoritesViewModel())
-    }
-    .previewDisplayName("Partial failure")
+#Preview("Partial failure") {
+  NavigationStack {
+    FavoritesView(viewModel: PreviewFactory.favoritesViewModel())
   }
 }
 #endif
