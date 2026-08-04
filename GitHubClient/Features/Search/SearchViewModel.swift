@@ -5,15 +5,21 @@ import Observation
 @Observable
 final class SearchViewModel {
   private(set) var state = RepositorySearchViewState()
+  private(set) var historyState: SearchHistoryViewState = .idle
 
   let minimumQueryLength: Int
   let favoritesStore: FavoritesStore
 
   @ObservationIgnored private let repository: RepositoriesRepository
+  @ObservationIgnored private let historyRepository: (any SearchHistoryRepository)?
   @ObservationIgnored private let perPage: Int
   @ObservationIgnored private let debounceDuration: Duration
   @ObservationIgnored private var searchTask: Task<Void, Never>?
   @ObservationIgnored private var paginationTask: Task<Void, Never>?
+  @ObservationIgnored private var historyTask: Task<Void, Never>?
+  @ObservationIgnored private var pendingHistoryOperations: [SearchHistoryOperation] = []
+  @ObservationIgnored private var activeHistoryOperation: SearchHistoryOperation?
+  @ObservationIgnored private var didRequestHistoryLoad = false
   @ObservationIgnored private var activeRequestID = 0
   @ObservationIgnored private var currentPage: Int?
   @ObservationIgnored private var pageInFlight: Int?
@@ -22,12 +28,14 @@ final class SearchViewModel {
   init(
     repository: RepositoriesRepository,
     favoritesStore: FavoritesStore,
+    historyRepository: (any SearchHistoryRepository)? = nil,
     minimumQueryLength: Int = 3,
     perPage: Int = 30,
     debounceDuration: Duration = .milliseconds(350)
   ) {
     self.repository = repository
     self.favoritesStore = favoritesStore
+    self.historyRepository = historyRepository
     self.minimumQueryLength = minimumQueryLength
     self.perPage = perPage
     self.debounceDuration = debounceDuration
@@ -36,6 +44,34 @@ final class SearchViewModel {
   deinit {
     searchTask?.cancel()
     paginationTask?.cancel()
+    historyTask?.cancel()
+  }
+
+  func loadSearchHistory() {
+    guard historyRepository != nil, !didRequestHistoryLoad else {
+      return
+    }
+    didRequestHistoryLoad = true
+    enqueueHistoryOperation(.load)
+  }
+
+  func clearSearchHistory() {
+    guard historyRepository != nil else {
+      return
+    }
+    enqueueHistoryOperation(.clear)
+  }
+
+  func retrySearchHistory() {
+    guard case .failed(_, _, let operation) = historyState else {
+      return
+    }
+    enqueueHistoryOperation(operation)
+  }
+
+  func selectSearchHistoryEntry(_ entry: SearchHistoryEntry) {
+    state.query = entry.query
+    startImmediateInitialSearch(query: entry.query)
   }
 
   func loadFavorites() async {
@@ -95,12 +131,7 @@ final class SearchViewModel {
     if case .failed = state.pagination {
       loadNextPage()
     } else {
-      cancelTasks()
-      activeRequestID += 1
-      let requestID = activeRequestID
-      searchTask = Task { [weak self] in
-        await self?.performInitialSearch(query: normalizedQuery, requestID: requestID)
-      }
+      startImmediateInitialSearch(query: normalizedQuery)
     }
   }
 
@@ -164,6 +195,9 @@ final class SearchViewModel {
       state.pagination = page.hasNextPage ? .idle : .endReached
       state.error = nil
       state.isShowingIncompleteResults = page.isIncomplete
+      if historyRepository != nil {
+        enqueueHistoryOperation(.record(query))
+      }
       searchTask = nil
     } catch {
       if isCancellation(error) {
@@ -254,6 +288,15 @@ final class SearchViewModel {
     state = RepositorySearchViewState()
   }
 
+  private func startImmediateInitialSearch(query: String) {
+    cancelTasks()
+    activeRequestID += 1
+    let requestID = activeRequestID
+    searchTask = Task { [weak self] in
+      await self?.performInitialSearch(query: query, requestID: requestID)
+    }
+  }
+
   private func cancelTasks() {
     searchTask?.cancel()
     paginationTask?.cancel()
@@ -285,4 +328,118 @@ final class SearchViewModel {
 
     return .unknown
   }
+
+  private func enqueueHistoryOperation(_ operation: SearchHistoryOperation) {
+    pendingHistoryOperations.append(operation)
+    startNextHistoryOperationIfNeeded()
+  }
+
+  private func startNextHistoryOperationIfNeeded() {
+    guard
+      activeHistoryOperation == nil,
+      let operation = pendingHistoryOperations.first,
+      let historyRepository
+    else {
+      return
+    }
+
+    activeHistoryOperation = operation
+    let entries = currentHistoryEntries
+    switch operation {
+    case .load where entries.isEmpty:
+      historyState = .loading
+    case .load, .record, .clear:
+      historyState = .updating(entries, operation)
+    }
+
+    historyTask = Task { [weak self, historyRepository] in
+      let result = await Self.executeHistoryOperation(
+        operation,
+        repository: historyRepository
+      )
+      guard !Task.isCancelled else {
+        return
+      }
+      self?.completeHistoryOperation(operation, result: result)
+    }
+  }
+
+  private func completeHistoryOperation(
+    _ operation: SearchHistoryOperation,
+    result: SearchHistoryOperationResult
+  ) {
+    guard
+      activeHistoryOperation == operation,
+      pendingHistoryOperations.first == operation
+    else {
+      return
+    }
+
+    let preservedEntries = currentHistoryEntries
+    historyTask = nil
+    activeHistoryOperation = nil
+    pendingHistoryOperations.removeFirst()
+
+    switch result {
+    case .entries(let entries):
+      historyState = .loaded(entries)
+    case .cleared:
+      historyState = .loaded([])
+    case .failure(let error):
+      historyState = .failed(preservedEntries, error, operation)
+    case .cancelled:
+      historyState = preservedEntries.isEmpty
+        ? .idle
+        : .loaded(preservedEntries)
+    }
+
+    startNextHistoryOperationIfNeeded()
+  }
+
+  private var currentHistoryEntries: [SearchHistoryEntry] {
+    switch historyState {
+    case .loaded(let entries),
+      .updating(let entries, _),
+      .failed(let entries, _, _):
+      entries
+    case .idle, .loading:
+      []
+    }
+  }
+
+  nonisolated private static func executeHistoryOperation(
+    _ operation: SearchHistoryOperation,
+    repository: any SearchHistoryRepository
+  ) async -> SearchHistoryOperationResult {
+    do {
+      try Task.checkCancellation()
+      switch operation {
+      case .load:
+        return .entries(try await repository.loadHistory())
+      case .record(let query):
+        return .entries(
+          try await repository.recordSuccessfulQuery(query)
+        )
+      case .clear:
+        try await repository.clearHistory()
+        return .cleared
+      }
+    } catch is CancellationError {
+      return .cancelled
+    } catch AppError.cancelled {
+      return .cancelled
+    } catch let error as AppError {
+      return .failure(error)
+    } catch {
+      assertionFailure("SearchHistoryRepository leaked a raw error: \(error)")
+      return .failure(.unknown)
+    }
+  }
+}
+
+nonisolated private enum SearchHistoryOperationResult: Sendable {
+  case entries([SearchHistoryEntry])
+  case cleared
+  case failure(AppError)
+  case cancelled
 }
