@@ -89,6 +89,40 @@ actor PreviewFavoritesRepository: FavoritesRepository {
   }
 }
 
+actor PreviewSearchHistoryRepository: SearchHistoryRepository {
+  private var entries: [SearchHistoryEntry]
+  private let loadResponse: PreviewResponse<[SearchHistoryEntry]>
+  private let clearResponse: PreviewResponse<Void>
+
+  init(
+    entries: [SearchHistoryEntry] = [],
+    loadResponse: PreviewResponse<[SearchHistoryEntry]>? = nil,
+    clearResponse: PreviewResponse<Void> = .success(())
+  ) {
+    self.entries = entries
+    self.loadResponse = loadResponse ?? .success(entries)
+    self.clearResponse = clearResponse
+  }
+
+  func loadHistory() async throws -> [SearchHistoryEntry] {
+    try await loadResponse.value()
+  }
+
+  func recordSuccessfulQuery(_ query: String) async throws
+    -> [SearchHistoryEntry] {
+    entries.removeAll {
+      $0.query.caseInsensitiveCompare(query) == .orderedSame
+    }
+    entries.insert(SearchHistoryEntry(query: query), at: 0)
+    return entries
+  }
+
+  func clearHistory() async throws {
+    try await clearResponse.value()
+    entries = []
+  }
+}
+
 nonisolated enum PreviewData {
   static let owner = RepositoryOwner(
     id: 1,
@@ -144,7 +178,8 @@ enum PreviewFactory {
     let repository = PreviewRepositoriesRepository()
     return AppContainer(
       repositoriesRepository: repository,
-      favoritesStore: favoritesStore(ids: [PreviewData.summary.id])
+      favoritesStore: favoritesStore(ids: [PreviewData.summary.id]),
+      searchHistoryRepository: PreviewSearchHistoryRepository()
     )
   }
 
@@ -154,6 +189,7 @@ enum PreviewFactory {
     let viewModel = SearchViewModel(
       repository: PreviewRepositoriesRepository(search: response),
       favoritesStore: favoritesStore(),
+      historyRepository: PreviewSearchHistoryRepository(),
       debounceDuration: .zero
     )
     viewModel.updateQuery("swift")

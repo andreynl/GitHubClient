@@ -112,6 +112,7 @@ struct FavoritesStoreTests {
     let searchViewModel = SearchViewModel(
       repository: repositoriesRepository,
       favoritesStore: store,
+      historyRepository: SearchHistoryRepositoryStub(),
       debounceDuration: .milliseconds(1)
     )
     let detailsViewModel = RepositoryDetailsViewModel(

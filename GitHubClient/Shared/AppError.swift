@@ -12,6 +12,7 @@ nonisolated enum AppError: Error, Equatable, Sendable {
   case unexpectedStatusCode(Int)
   case offline
   case cancelled
+  case persistence
   case unknown
 
   var message: String {
@@ -44,6 +45,8 @@ nonisolated enum AppError: Error, Equatable, Sendable {
       "The network appears to be offline."
     case .cancelled:
       "The request was cancelled."
+    case .persistence:
+      "Saved data could not be loaded or updated. Try again."
     case .unknown:
       "Something went wrong. Try again."
     }

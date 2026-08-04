@@ -12,7 +12,8 @@ struct ContentView: View {
     _searchViewModel = State(
       initialValue: SearchViewModel(
         repository: container.repositoriesRepository,
-        favoritesStore: container.favoritesStore
+        favoritesStore: container.favoritesStore,
+        historyRepository: container.searchHistoryRepository
       )
     )
     _favoritesViewModel = State(
