@@ -88,25 +88,30 @@ not promise unscheduled product features.
   `CODE_SIGNING_ALLOWED=NO`; signed Simulator builds render the approved Light
   and Dark artwork correctly
 
-## Planned
+## Pre-Phase 6 — Engineering Hardening
 
-### Phase 6
+- Favorites initial-load failure presentation and retry
+- Release build validation in CI
 
-Phase 6 scope must be planned and approved before implementation. Candidates
-identified by the production-readiness review include:
+## Phase 6 — Search History
 
-- favorites persistence failure presentation
-- recoverable cancellation UI states
-- replace remaining delay-driven asynchronous unit tests with controlled gates
-- minimal UI smoke coverage
+Planning required before implementation.
 
-These are candidates, not completed or committed scope.
+## Engineering Backlog
 
-## Unscheduled Ideas
+### Technical Improvements
 
-- offline repository-content support
-- image caching
-- advanced search filters and history
-- repository sorting
-- user profiles
-- additional localizations
+- Recoverable cancellation UI states
+- Replace remaining delay-driven async tests with controlled gates
+- Minimal UI smoke coverage
+- Independent README retry
+- Preserve raw search input during normalized requests
+
+### Future Product Ideas
+
+- Offline repository-content support
+- Image caching
+- Advanced search filters and history
+- Repository sorting
+- User profiles
+- Additional localizations
