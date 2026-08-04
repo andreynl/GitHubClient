@@ -15,6 +15,19 @@ enum ControlledInitialSearchResult: Sendable {
   case cancellation
 }
 
+nonisolated struct SearchHistoryRepositoryStub: SearchHistoryRepository {
+  func loadHistory() async throws -> [SearchHistoryEntry] {
+    []
+  }
+
+  func recordSuccessfulQuery(_ query: String) async throws
+    -> [SearchHistoryEntry] {
+    []
+  }
+
+  func clearHistory() async throws {}
+}
+
 actor ControlledInitialSearchRepository: RepositoriesRepository {
   private struct PendingSearch {
     let query: String

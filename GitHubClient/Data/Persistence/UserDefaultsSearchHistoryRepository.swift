@@ -1,9 +1,9 @@
 import Foundation
 
 nonisolated protocol SearchHistoryPersistence: Sendable {
-  func data(forKey key: String) async throws -> Data?
-  func set(_ data: Data, forKey key: String) async throws
-  func removeObject(forKey key: String) async throws
+  func data(forKey key: String) throws -> Data?
+  func set(_ data: Data, forKey key: String) throws
+  func removeObject(forKey key: String) throws
 }
 
 nonisolated final class UserDefaultsSearchHistoryPersistence:
@@ -16,15 +16,15 @@ nonisolated final class UserDefaultsSearchHistoryPersistence:
     self.defaults = defaults
   }
 
-  func data(forKey key: String) async throws -> Data? {
+  func data(forKey key: String) throws -> Data? {
     defaults.data(forKey: key)
   }
 
-  func set(_ data: Data, forKey key: String) async throws {
+  func set(_ data: Data, forKey key: String) throws {
     defaults.set(data, forKey: key)
   }
 
-  func removeObject(forKey key: String) async throws {
+  func removeObject(forKey key: String) throws {
     defaults.removeObject(forKey: key)
   }
 }
@@ -62,7 +62,7 @@ actor UserDefaultsSearchHistoryRepository: SearchHistoryRepository {
   func loadHistory() async throws -> [SearchHistoryEntry] {
     do {
       try Task.checkCancellation()
-      return try await loadEntries()
+      return try loadEntries()
     } catch {
       throw mapPersistenceError(error)
     }
@@ -72,7 +72,7 @@ actor UserDefaultsSearchHistoryRepository: SearchHistoryRepository {
     -> [SearchHistoryEntry] {
     do {
       try Task.checkCancellation()
-      var entries = try await loadEntries()
+      var entries = try loadEntries()
       let displayQuery = query.trimmingCharacters(
         in: .whitespacesAndNewlines
       )
@@ -85,7 +85,7 @@ actor UserDefaultsSearchHistoryRepository: SearchHistoryRepository {
       }
       let data = try encoder.encode(entries.map(\.query))
       try Task.checkCancellation()
-      try await persistence.set(data, forKey: key)
+      try persistence.set(data, forKey: key)
       return entries
     } catch {
       throw mapPersistenceError(error)
@@ -95,14 +95,14 @@ actor UserDefaultsSearchHistoryRepository: SearchHistoryRepository {
   func clearHistory() async throws {
     do {
       try Task.checkCancellation()
-      try await persistence.removeObject(forKey: key)
+      try persistence.removeObject(forKey: key)
     } catch {
       throw mapPersistenceError(error)
     }
   }
 
-  private func loadEntries() async throws -> [SearchHistoryEntry] {
-    guard let data = try await persistence.data(forKey: key) else {
+  private func loadEntries() throws -> [SearchHistoryEntry] {
+    guard let data = try persistence.data(forKey: key) else {
       return []
     }
     return try decoder.decode([String].self, from: data).map {

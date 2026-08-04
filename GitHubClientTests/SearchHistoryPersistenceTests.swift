@@ -236,10 +236,58 @@ struct SearchHistoryPersistenceTests {
     #expect(storage.defaults.data(forKey: storage.key) == wrongShape)
   }
 
+  @Test("Concurrent record operations do not lose updates")
+  func concurrentRecordOperationsDoNotLoseUpdates() async throws {
+    let persistence = ReentrantReadSearchHistoryPersistence()
+    let repository = UserDefaultsSearchHistoryRepository(
+      persistence: persistence,
+      key: "history",
+      maximumCapacity: 10
+    )
+
+    async let swiftResult = repository.recordSuccessfulQuery("Swift")
+    async let swiftUIResult = repository.recordSuccessfulQuery("SwiftUI")
+    let (firstResult, secondResult) = try await (swiftResult, swiftUIResult)
+    let finalResult = try await repository.loadHistory()
+
+    #expect(Set(finalResult.map(\.query)) == ["Swift", "SwiftUI"])
+    #expect([firstResult.count, secondResult.count].sorted() == [1, 2])
+    #expect(finalResult == (firstResult.count == 2 ? firstResult : secondResult))
+
+  }
+
+  @Test("Record and clear remain atomically ordered")
+  func recordAndClearRemainAtomicallyOrdered() async throws {
+    let recordThenClearStorage = try makeStorage()
+    defer { recordThenClearStorage.cleanup() }
+    let recordThenClear = UserDefaultsSearchHistoryRepository(
+      defaults: recordThenClearStorage.defaults,
+      key: recordThenClearStorage.key,
+      maximumCapacity: 10
+    )
+
+    _ = try await recordThenClear.recordSuccessfulQuery("Swift")
+    try await recordThenClear.clearHistory()
+    #expect(try await recordThenClear.loadHistory() == [])
+
+    let clearThenRecordStorage = try makeStorage()
+    defer { clearThenRecordStorage.cleanup() }
+    let clearThenRecord = UserDefaultsSearchHistoryRepository(
+      defaults: clearThenRecordStorage.defaults,
+      key: clearThenRecordStorage.key,
+      maximumCapacity: 10
+    )
+
+    try await clearThenRecord.clearHistory()
+    let recorded = try await clearThenRecord.recordSuccessfulQuery("Swift")
+    #expect(recorded == [SearchHistoryEntry(query: "Swift")])
+    #expect(try await clearThenRecord.loadHistory() == recorded)
+  }
+
   @Test("Cancellation before commit leaves persisted bytes unchanged")
   func cancellationBeforeCommitLeavesBytesUnchanged() async {
     let persistence = ControlledSearchHistoryPersistence(
-      setBehavior: .suspendBeforeCommit
+      setBehavior: .cancelBeforeCommit
     )
     let repository = UserDefaultsSearchHistoryRepository(
       persistence: persistence,
@@ -250,15 +298,10 @@ struct SearchHistoryPersistenceTests {
       try await repository.recordSuccessfulQuery("Swift")
     }
 
-    await persistence.waitForSetInvocation()
-    task.cancel()
-    await persistence.releaseSet()
-
     await #expect(throws: CancellationError.self) {
       _ = try await task.value
     }
-    #expect(await persistence.persistedData() == nil)
-    #expect(await persistence.outstandingOperationCount() == 0)
+    #expect(persistence.persistedData() == nil)
   }
 
   @Test("Cancellation after commit keeps bytes and authoritative result")
@@ -277,9 +320,8 @@ struct SearchHistoryPersistenceTests {
     }.value
 
     #expect(result == [SearchHistoryEntry(query: "Swift")])
-    let data = try #require(await persistence.persistedData())
+    let data = try #require(persistence.persistedData())
     #expect(try JSONDecoder().decode([String].self, from: data) == ["Swift"])
-    #expect(await persistence.outstandingOperationCount() == 0)
   }
 }
 
@@ -301,35 +343,30 @@ private func makeStorage() throws -> SearchHistoryStorage {
   )
 }
 
-private actor ControlledSearchHistoryPersistence: SearchHistoryPersistence {
+private final class ControlledSearchHistoryPersistence:
+  SearchHistoryPersistence,
+  @unchecked Sendable
+{
   enum SetBehavior: Equatable, Sendable {
-    case suspendBeforeCommit
+    case cancelBeforeCommit
     case cancelAfterCommit
   }
 
   private let setBehavior: SetBehavior
   private var data: Data?
-  private var setInvocationCount = 0
-  private var setInvocationWaiters: [CheckedContinuation<Void, Never>] = []
-  private var setContinuation: CheckedContinuation<Void, Never>?
 
   init(setBehavior: SetBehavior) {
     self.setBehavior = setBehavior
   }
 
-  func data(forKey key: String) async throws -> Data? {
+  func data(forKey key: String) throws -> Data? {
     data
   }
 
-  func set(_ data: Data, forKey key: String) async throws {
-    setInvocationCount += 1
-    let waiters = setInvocationWaiters
-    setInvocationWaiters.removeAll()
-    waiters.forEach { $0.resume() }
-
-    if setBehavior == .suspendBeforeCommit {
-      await withCheckedContinuation { continuation in
-        setContinuation = continuation
+  func set(_ data: Data, forKey key: String) throws {
+    if setBehavior == .cancelBeforeCommit {
+      withUnsafeCurrentTask { task in
+        task?.cancel()
       }
       try Task.checkCancellation()
     }
@@ -342,29 +379,68 @@ private actor ControlledSearchHistoryPersistence: SearchHistoryPersistence {
     }
   }
 
-  func removeObject(forKey key: String) async throws {
+  func removeObject(forKey key: String) throws {
     data = nil
-  }
-
-  func waitForSetInvocation() async {
-    guard setInvocationCount == 0 else {
-      return
-    }
-    await withCheckedContinuation { continuation in
-      setInvocationWaiters.append(continuation)
-    }
-  }
-
-  func releaseSet() {
-    setContinuation?.resume()
-    setContinuation = nil
   }
 
   func persistedData() -> Data? {
     data
   }
+}
 
-  func outstandingOperationCount() -> Int {
-    setContinuation == nil ? 0 : 1
+private final class ReentrantReadSearchHistoryPersistence:
+  SearchHistoryPersistence,
+  @unchecked Sendable
+{
+  private let asynchronousState = ReentrantReadState()
+  private var synchronousData: Data?
+
+  func data(forKey key: String) throws -> Data? {
+    synchronousData
+  }
+
+  func set(_ data: Data, forKey key: String) throws {
+    synchronousData = data
+  }
+
+  func removeObject(forKey key: String) throws {
+    synchronousData = nil
+  }
+
+  func data(forKey key: String) async throws -> Data? {
+    await asynchronousState.dataAfterConcurrentRead()
+  }
+
+  func set(_ data: Data, forKey key: String) async throws {
+    await asynchronousState.set(data)
+  }
+
+  func removeObject(forKey key: String) async throws {
+    await asynchronousState.removeData()
+  }
+}
+
+private actor ReentrantReadState {
+  private var data: Data?
+  private var firstRead: CheckedContinuation<Data?, Never>?
+
+  func dataAfterConcurrentRead() async -> Data? {
+    guard let firstRead else {
+      return await withCheckedContinuation { continuation in
+        self.firstRead = continuation
+      }
+    }
+
+    self.firstRead = nil
+    firstRead.resume(returning: data)
+    return data
+  }
+
+  func set(_ data: Data) {
+    self.data = data
+  }
+
+  func removeData() {
+    data = nil
   }
 }

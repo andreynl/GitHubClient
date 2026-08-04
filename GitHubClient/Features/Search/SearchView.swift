@@ -11,6 +11,7 @@ struct SearchView: View {
     .searchable(text: searchText, prompt: "Search GitHub")
     .task {
       await viewModel.loadFavorites()
+      viewModel.loadSearchHistory()
     }
   }
 
@@ -18,11 +19,21 @@ struct SearchView: View {
   private var content: some View {
     switch viewModel.state.phase {
     case .idle:
-      ContentUnavailableView(
-        "Search repositories",
-        systemImage: "magnifyingglass",
-        description: Text("Enter at least \(viewModel.minimumQueryLength) characters.")
-      )
+      if viewModel.shouldShowSearchHistory {
+        SearchHistorySection(
+          state: viewModel.historyState,
+          canClear: viewModel.canClearSearchHistory,
+          selectEntry: viewModel.selectSearchHistoryEntry,
+          clear: viewModel.clearSearchHistory,
+          retry: viewModel.retrySearchHistory
+        )
+      } else {
+        ContentUnavailableView(
+          "Search repositories",
+          systemImage: "magnifyingglass",
+          description: Text("Enter at least \(viewModel.minimumQueryLength) characters.")
+        )
+      }
     case .initialLoading:
       ProgressView()
         .frame(maxWidth: .infinity)
@@ -154,6 +165,42 @@ private struct FavoriteButton: View {
 }
 
 #if DEBUG
+#Preview("Recent searches") {
+  NavigationStack {
+    SearchHistoryPreview(
+      load: .success(SearchHistoryPreview.entries)
+    )
+  }
+}
+
+#Preview("Recent searches loading") {
+  NavigationStack {
+    SearchHistoryPreview(load: .pending)
+  }
+}
+
+#Preview("Empty recent searches") {
+  NavigationStack {
+    SearchHistoryPreview(load: .success([]))
+  }
+}
+
+#Preview("Recent searches updating") {
+  NavigationStack {
+    SearchHistoryPreview(
+      load: .success(SearchHistoryPreview.entries),
+      clear: .pending,
+      clearsAfterLoading: true
+    )
+  }
+}
+
+#Preview("Recent searches error") {
+  NavigationStack {
+    SearchHistoryPreview(load: .failure(.persistence))
+  }
+}
+
 #Preview("Partial results") {
   NavigationStack {
     SearchView(
@@ -196,6 +243,52 @@ private struct FavoriteButton: View {
         response: .failure(.offline)
       )
     )
+  }
+}
+
+private struct SearchHistoryPreview: View {
+  static let entries = [
+    SearchHistoryEntry(query: "SwiftUI"),
+    SearchHistoryEntry(query: "Swift Concurrency"),
+    SearchHistoryEntry(query: "iOS architecture"),
+  ]
+
+  @State private var viewModel: SearchViewModel
+  @State private var didRequestClear = false
+  private let clearsAfterLoading: Bool
+
+  init(
+    load: PreviewResponse<[SearchHistoryEntry]>,
+    clear: PreviewResponse<Void> = .success(()),
+    clearsAfterLoading: Bool = false
+  ) {
+    let historyRepository = PreviewSearchHistoryRepository(
+      loadResponse: load,
+      clearResponse: clear
+    )
+    _viewModel = State(
+      initialValue: SearchViewModel(
+        repository: PreviewRepositoriesRepository(),
+        favoritesStore: PreviewFactory.favoritesStore(),
+        historyRepository: historyRepository
+      )
+    )
+    self.clearsAfterLoading = clearsAfterLoading
+  }
+
+  var body: some View {
+    SearchView(viewModel: viewModel)
+      .onChange(of: viewModel.historyState) { _, state in
+        guard
+          clearsAfterLoading,
+          !didRequestClear,
+          case .loaded = state
+        else {
+          return
+        }
+        didRequestClear = true
+        viewModel.clearSearchHistory()
+      }
   }
 }
 #endif

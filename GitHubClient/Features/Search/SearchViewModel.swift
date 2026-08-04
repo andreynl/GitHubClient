@@ -6,12 +6,13 @@ import Observation
 final class SearchViewModel {
   private(set) var state = RepositorySearchViewState()
   private(set) var historyState: SearchHistoryViewState = .idle
+  private(set) var canClearSearchHistory = true
 
   let minimumQueryLength: Int
   let favoritesStore: FavoritesStore
 
   @ObservationIgnored private let repository: RepositoriesRepository
-  @ObservationIgnored private let historyRepository: (any SearchHistoryRepository)?
+  @ObservationIgnored private let historyRepository: any SearchHistoryRepository
   @ObservationIgnored private let perPage: Int
   @ObservationIgnored private let debounceDuration: Duration
   @ObservationIgnored private var searchTask: Task<Void, Never>?
@@ -28,7 +29,7 @@ final class SearchViewModel {
   init(
     repository: RepositoriesRepository,
     favoritesStore: FavoritesStore,
-    historyRepository: (any SearchHistoryRepository)? = nil,
+    historyRepository: any SearchHistoryRepository,
     minimumQueryLength: Int = 3,
     perPage: Int = 30,
     debounceDuration: Duration = .milliseconds(350)
@@ -48,7 +49,7 @@ final class SearchViewModel {
   }
 
   func loadSearchHistory() {
-    guard historyRepository != nil, !didRequestHistoryLoad else {
+    guard !didRequestHistoryLoad else {
       return
     }
     didRequestHistoryLoad = true
@@ -56,9 +57,6 @@ final class SearchViewModel {
   }
 
   func clearSearchHistory() {
-    guard historyRepository != nil else {
-      return
-    }
     enqueueHistoryOperation(.clear)
   }
 
@@ -80,6 +78,21 @@ final class SearchViewModel {
 
   var favoritesAreLoaded: Bool {
     favoritesStore.isLoaded
+  }
+
+  var shouldShowSearchHistory: Bool {
+    guard state.query.isEmpty, state.phase == .idle else {
+      return false
+    }
+
+    switch historyState {
+    case .loading, .updating, .failed:
+      return true
+    case .loaded(let entries):
+      return !entries.isEmpty
+    case .idle:
+      return false
+    }
   }
 
   func isFavorite(repositoryID: Int) -> Bool {
@@ -195,9 +208,7 @@ final class SearchViewModel {
       state.pagination = page.hasNextPage ? .idle : .endReached
       state.error = nil
       state.isShowingIncompleteResults = page.isIncomplete
-      if historyRepository != nil {
-        enqueueHistoryOperation(.record(query))
-      }
+      enqueueHistoryOperation(.record(query))
       searchTask = nil
     } catch {
       if isCancellation(error) {
@@ -330,6 +341,12 @@ final class SearchViewModel {
   }
 
   private func enqueueHistoryOperation(_ operation: SearchHistoryOperation) {
+    if operation == .clear {
+      guard canClearSearchHistory else {
+        return
+      }
+      canClearSearchHistory = false
+    }
     pendingHistoryOperations.append(operation)
     startNextHistoryOperationIfNeeded()
   }
@@ -337,8 +354,7 @@ final class SearchViewModel {
   private func startNextHistoryOperationIfNeeded() {
     guard
       activeHistoryOperation == nil,
-      let operation = pendingHistoryOperations.first,
-      let historyRepository
+      let operation = pendingHistoryOperations.first
     else {
       return
     }
@@ -379,6 +395,9 @@ final class SearchViewModel {
     historyTask = nil
     activeHistoryOperation = nil
     pendingHistoryOperations.removeFirst()
+    if operation == .clear {
+      canClearSearchHistory = true
+    }
 
     switch result {
     case .entries(let entries):

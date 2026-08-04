@@ -162,6 +162,15 @@
     "Retry" : {
 
     },
+    "Retries clearing recent searches" : {
+      "comment" : "An accessibility hint for retrying a failed recent-searches clear operation."
+    },
+    "Retries loading recent searches" : {
+      "comment" : "An accessibility hint for retrying a failed recent-searches load operation."
+    },
+    "Retries recording a recent search" : {
+      "comment" : "An accessibility hint for retrying a failed recent-search record operation."
+    },
     "Retry loading favorites" : {
 
     },

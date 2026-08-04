@@ -5,6 +5,183 @@ import Testing
 @Suite("Search History ViewModel lifecycle and FIFO")
 struct SearchHistoryViewModelTests {
   @MainActor
+  @Test("AppContainer exposes its injected Search History repository")
+  func appContainerExposesInjectedHistoryRepository() async throws {
+    let historyRepository = ControlledSearchHistoryRepository()
+    let container = AppContainer(
+      repositoriesRepository: SearchHistoryRepositoriesStub(),
+      favoritesStore: makeFavoritesStore(),
+      searchHistoryRepository: historyRepository
+    )
+
+    let loadTask = Task {
+      try await container.searchHistoryRepository.loadHistory()
+    }
+    await historyRepository.waitForInvocationCount(1)
+    #expect(await historyRepository.completeNext(with: .success([])))
+    #expect(try await loadTask.value == [])
+
+    #expect(await historyRepository.invocations() == [.load])
+    #expect(await historyRepository.outstandingOperationCount() == 0)
+  }
+
+  @MainActor
+  @Test("History visibility preserves the idle fallback for empty content")
+  func historyVisibilityForIdleStates() async {
+    let repository = ControlledSearchHistoryRepository()
+    let viewModel = makeSearchHistoryViewModel(historyRepository: repository)
+
+    #expect(!viewModel.shouldShowSearchHistory)
+
+    viewModel.loadSearchHistory()
+    #expect(viewModel.shouldShowSearchHistory)
+    await repository.waitForInvocationCount(1)
+    viewModel.clearSearchHistory()
+    #expect(await repository.completeNext(with: .success([])))
+    await repository.waitForInvocationCount(2)
+
+    #expect(viewModel.historyState == .updating([], .clear))
+    #expect(viewModel.shouldShowSearchHistory)
+    #expect(await repository.completeNext(with: .success([])))
+    await waitForHistoryState(viewModel) { $0 == .loaded([]) }
+
+    #expect(!viewModel.shouldShowSearchHistory)
+  }
+
+  @MainActor
+  @Test("A history load error is visible without replacing idle Search")
+  func historyLoadErrorIsVisible() async {
+    let repository = ControlledSearchHistoryRepository()
+    let viewModel = makeSearchHistoryViewModel(historyRepository: repository)
+
+    viewModel.loadSearchHistory()
+    await repository.waitForInvocationCount(1)
+    #expect(await repository.completeNext(with: .failure(.persistence)))
+    await waitForHistoryState(viewModel) {
+      $0 == .failed([], .persistence, .load)
+    }
+
+    #expect(viewModel.state.phase == .idle)
+    #expect(viewModel.shouldShowSearchHistory)
+  }
+
+  @MainActor
+  @Test("History with entries, progress, or an error is visible while Search is idle")
+  func visibleHistoryStatesWhileSearchIsIdle() async {
+    let repository = ControlledSearchHistoryRepository()
+    let viewModel = makeSearchHistoryViewModel(historyRepository: repository)
+    let entries = [SearchHistoryEntry(query: "Swift")]
+
+    viewModel.loadSearchHistory()
+    await repository.waitForInvocationCount(1)
+    #expect(await repository.completeNext(with: .success(entries)))
+    await waitForHistoryState(viewModel) { $0 == .loaded(entries) }
+    #expect(viewModel.shouldShowSearchHistory)
+
+    viewModel.clearSearchHistory()
+    #expect(viewModel.shouldShowSearchHistory)
+    await repository.waitForInvocationCount(2)
+    #expect(await repository.completeNext(with: .failure(.persistence)))
+    await waitForHistoryState(viewModel) {
+      $0 == .failed(entries, .persistence, .clear)
+    }
+    #expect(viewModel.shouldShowSearchHistory)
+  }
+
+  @MainActor
+  @Test("Typing immediately hides visible history")
+  func typingHidesHistoryImmediately() async {
+    let repository = ControlledSearchHistoryRepository()
+    let viewModel = makeSearchHistoryViewModel(
+      historyRepository: repository,
+      debounceDuration: .seconds(3_600)
+    )
+    let entries = [SearchHistoryEntry(query: "Swift")]
+
+    viewModel.loadSearchHistory()
+    await repository.waitForInvocationCount(1)
+    #expect(await repository.completeNext(with: .success(entries)))
+    await waitForHistoryState(viewModel) { $0 == .loaded(entries) }
+    #expect(viewModel.shouldShowSearchHistory)
+
+    viewModel.updateQuery("s")
+
+    #expect(!viewModel.shouldShowSearchHistory)
+  }
+
+  @MainActor
+  @Test("Primary Search presentation always hides history")
+  func primarySearchPresentationHidesHistory() async {
+    let searchRepository = ControlledInitialSearchRepository()
+    let historyRepository = ControlledSearchHistoryRepository()
+    let viewModel = makeSearchHistoryViewModel(
+      historyRepository: historyRepository,
+      repository: searchRepository,
+      debounceDuration: .zero
+    )
+    let entries = [SearchHistoryEntry(query: "Swift")]
+
+    viewModel.loadSearchHistory()
+    await historyRepository.waitForInvocationCount(1)
+    #expect(await historyRepository.completeNext(with: .success(entries)))
+    await waitForHistoryState(viewModel) { $0 == .loaded(entries) }
+
+    viewModel.updateQuery("swift")
+    await searchRepository.waitForInvocationCount(1)
+    #expect(viewModel.state.phase == .initialLoading)
+    #expect(!viewModel.shouldShowSearchHistory)
+
+    let page = RepositoryPage(
+      items: [searchHistoryRepositorySummary(id: 1)],
+      currentPage: 1,
+      hasNextPage: false,
+      totalCount: 1
+    )
+    #expect(
+      await searchRepository.complete(query: "swift", with: .success(page))
+    )
+    await waitForPrimarySearchState(viewModel) { $0.phase == .loaded }
+    #expect(viewModel.state.phase == .loaded)
+    #expect(!viewModel.shouldShowSearchHistory)
+    await historyRepository.waitForInvocationCount(2)
+    #expect(
+      await historyRepository.completeNext(
+        with: .success([SearchHistoryEntry(query: "swift")])
+      )
+    )
+
+    viewModel.updateQuery("empty")
+    await searchRepository.waitForInvocationCount(2)
+    let emptyPage = RepositoryPage(
+      items: [],
+      currentPage: 1,
+      hasNextPage: false,
+      totalCount: 0
+    )
+    #expect(
+      await searchRepository.complete(query: "empty", with: .success(emptyPage))
+    )
+    await waitForPrimarySearchState(viewModel) { $0.phase == .empty }
+    #expect(viewModel.state.phase == .empty)
+    #expect(!viewModel.shouldShowSearchHistory)
+    await historyRepository.waitForInvocationCount(3)
+    #expect(
+      await historyRepository.completeNext(
+        with: .success([SearchHistoryEntry(query: "empty")])
+      )
+    )
+
+    viewModel.updateQuery("failure")
+    await searchRepository.waitForInvocationCount(3)
+    #expect(
+      await searchRepository.complete(query: "failure", with: .failure(.offline))
+    )
+    await waitForPrimarySearchState(viewModel) { $0.phase == .failed }
+    #expect(viewModel.state.phase == .failed)
+    #expect(!viewModel.shouldShowSearchHistory)
+  }
+
+  @MainActor
   @Test("Selecting history starts immediately without the typing debounce")
   func selectionStartsImmediately() async {
     let searchRepository = ControlledInitialSearchRepository()
@@ -567,6 +744,75 @@ struct SearchHistoryViewModelTests {
     #expect(await repository.invocations() == [.load, .clear])
     #expect(await repository.completeNext(with: .success([])))
     await waitForHistoryState(viewModel) { $0 == .loaded([]) }
+    #expect(await repository.outstandingOperationCount() == 0)
+    #expect(await repository.outstandingWaiterCount() == 0)
+  }
+
+  @MainActor
+  @Test("Duplicate Clear is accepted only once")
+  func duplicateClearIsAcceptedOnlyOnce() async {
+    let repository = ControlledSearchHistoryRepository()
+    let viewModel = makeSearchHistoryViewModel(
+      historyRepository: repository,
+      repository: SearchHistoryPagedRepository(),
+      debounceDuration: .zero
+    )
+
+    viewModel.updateQuery("swift")
+    await waitForPrimarySearchState(viewModel) { $0.phase == .loaded }
+    await repository.waitForInvocationCount(1)
+    #expect(await repository.invocations() == [.record("swift")])
+
+    viewModel.clearSearchHistory()
+    viewModel.clearSearchHistory()
+    viewModel.clearSearchHistory()
+
+    #expect(!viewModel.canClearSearchHistory)
+    #expect(await repository.invocations() == [.record("swift")])
+    let recorded = [SearchHistoryEntry(query: "swift")]
+    #expect(await repository.completeNext(with: .success(recorded)))
+
+    await repository.waitForInvocationCount(2)
+    #expect(await repository.invocations() == [.record("swift"), .clear])
+    #expect(await repository.completeNext(with: .success([])))
+    await waitForHistoryState(viewModel) { $0 == .loaded([]) }
+
+    #expect(viewModel.canClearSearchHistory)
+    #expect(await repository.outstandingOperationCount() == 0)
+    #expect(await repository.outstandingWaiterCount() == 0)
+  }
+
+  @MainActor
+  @Test("Clear becomes available after failure and retry cancellation")
+  func clearBecomesAvailableAfterFailureAndCancellation() async {
+    let repository = ControlledSearchHistoryRepository()
+    let viewModel = makeSearchHistoryViewModel(historyRepository: repository)
+    let entries = [SearchHistoryEntry(query: "Swift")]
+
+    viewModel.loadSearchHistory()
+    await repository.waitForInvocationCount(1)
+    #expect(await repository.completeNext(with: .success(entries)))
+    await waitForHistoryState(viewModel) { $0 == .loaded(entries) }
+
+    viewModel.clearSearchHistory()
+    #expect(!viewModel.canClearSearchHistory)
+    await repository.waitForInvocationCount(2)
+    #expect(await repository.completeNext(with: .failure(.persistence)))
+    await waitForHistoryState(viewModel) {
+      $0 == .failed(entries, .persistence, .clear)
+    }
+    #expect(viewModel.canClearSearchHistory)
+
+    viewModel.retrySearchHistory()
+    #expect(!viewModel.canClearSearchHistory)
+    await repository.waitForInvocationCount(3)
+    #expect(await repository.completeNext(with: .cancellation))
+    await waitForHistoryState(viewModel) { $0 == .loaded(entries) }
+
+    #expect(viewModel.canClearSearchHistory)
+    #expect(
+      await repository.invocations() == [.load, .clear, .clear]
+    )
     #expect(await repository.outstandingOperationCount() == 0)
     #expect(await repository.outstandingWaiterCount() == 0)
   }

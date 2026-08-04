@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SearchHistorySection: View {
   let state: SearchHistoryViewState
+  let canClear: Bool
   let selectEntry: (SearchHistoryEntry) -> Void
   let clear: () -> Void
   let retry: () -> Void
@@ -18,7 +19,7 @@ struct SearchHistorySection: View {
         if !entries.isEmpty {
           Button("Clear", action: clear)
             .frame(minWidth: 44, minHeight: 44)
-            .disabled(isClearing)
+            .disabled(!canClear)
             .accessibilityLabel("Clear all recent searches")
             .accessibilityHint("Deletes all recent searches")
         }
@@ -49,13 +50,14 @@ struct SearchHistorySection: View {
       ProgressView("Loading recent searches")
     case .updating(_, let operation):
       ProgressView(progressLabel(for: operation))
-    case .failed(_, let error, _):
+    case .failed(_, let error, let operation):
       VStack(alignment: .leading, spacing: 8) {
         Text(error.message)
           .font(.footnote)
           .foregroundStyle(.secondary)
         Button("Retry", action: retry)
           .frame(minWidth: 44, minHeight: 44)
+          .accessibilityHint(retryHint(for: operation))
       }
     case .idle, .loaded:
       EmptyView()
@@ -73,13 +75,6 @@ struct SearchHistorySection: View {
     }
   }
 
-  private var isClearing: Bool {
-    if case .updating(_, .clear) = state {
-      return true
-    }
-    return false
-  }
-
   private func progressLabel(
     for operation: SearchHistoryOperation
   ) -> LocalizedStringKey {
@@ -90,6 +85,19 @@ struct SearchHistorySection: View {
       "Updating recent searches"
     case .clear:
       "Clearing recent searches"
+    }
+  }
+
+  private func retryHint(
+    for operation: SearchHistoryOperation
+  ) -> LocalizedStringKey {
+    switch operation {
+    case .load:
+      "Retries loading recent searches"
+    case .record:
+      "Retries recording a recent search"
+    case .clear:
+      "Retries clearing recent searches"
     }
   }
 }

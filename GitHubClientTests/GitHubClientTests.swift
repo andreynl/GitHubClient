@@ -404,6 +404,7 @@ struct GitHubClientTests {
     let viewModel = SearchViewModel(
       repository: repository,
       favoritesStore: makeFavoritesStore(),
+      historyRepository: SearchHistoryRepositoryStub(),
       debounceDuration: .milliseconds(1)
     )
 
@@ -430,6 +431,7 @@ struct GitHubClientTests {
     let viewModel = SearchViewModel(
       repository: repository,
       favoritesStore: makeFavoritesStore(),
+      historyRepository: SearchHistoryRepositoryStub(),
       debounceDuration: .milliseconds(1)
     )
 
@@ -450,6 +452,7 @@ struct GitHubClientTests {
     let viewModel = SearchViewModel(
       repository: repository,
       favoritesStore: makeFavoritesStore(),
+      historyRepository: SearchHistoryRepositoryStub(),
       debounceDuration: .milliseconds(1)
     )
 
@@ -472,6 +475,7 @@ struct GitHubClientTests {
     let viewModel = SearchViewModel(
       repository: repository,
       favoritesStore: makeFavoritesStore(),
+      historyRepository: SearchHistoryRepositoryStub(),
       debounceDuration: .milliseconds(1)
     )
 
@@ -493,6 +497,7 @@ struct GitHubClientTests {
     let viewModel = SearchViewModel(
       repository: repository,
       favoritesStore: makeFavoritesStore(),
+      historyRepository: SearchHistoryRepositoryStub(),
       minimumQueryLength: 3,
       debounceDuration: .milliseconds(1)
     )
@@ -517,6 +522,7 @@ struct GitHubClientTests {
     let viewModel = SearchViewModel(
       repository: repository,
       favoritesStore: makeFavoritesStore(),
+      historyRepository: SearchHistoryRepositoryStub(),
       debounceDuration: .milliseconds(50)
     )
 
@@ -556,6 +562,7 @@ struct GitHubClientTests {
     let viewModel = SearchViewModel(
       repository: repository,
       favoritesStore: makeFavoritesStore(),
+      historyRepository: SearchHistoryRepositoryStub(),
       debounceDuration: .milliseconds(1)
     )
 
@@ -585,6 +592,7 @@ struct GitHubClientTests {
     let viewModel = SearchViewModel(
       repository: repository,
       favoritesStore: makeFavoritesStore(),
+      historyRepository: SearchHistoryRepositoryStub(),
       debounceDuration: .milliseconds(1)
     )
 
@@ -617,6 +625,7 @@ struct GitHubClientTests {
     let viewModel = SearchViewModel(
       repository: repository,
       favoritesStore: makeFavoritesStore(),
+      historyRepository: SearchHistoryRepositoryStub(),
       debounceDuration: .milliseconds(1)
     )
 
@@ -644,6 +653,7 @@ struct GitHubClientTests {
     let viewModel = SearchViewModel(
       repository: repository,
       favoritesStore: makeFavoritesStore(),
+      historyRepository: SearchHistoryRepositoryStub(),
       debounceDuration: .milliseconds(1)
     )
 
@@ -673,6 +683,7 @@ struct GitHubClientTests {
     let viewModel = SearchViewModel(
       repository: repository,
       favoritesStore: makeFavoritesStore(),
+      historyRepository: SearchHistoryRepositoryStub(),
       debounceDuration: .milliseconds(1)
     )
 
@@ -697,6 +708,7 @@ struct GitHubClientTests {
     let viewModel = SearchViewModel(
       repository: repository,
       favoritesStore: makeFavoritesStore(),
+      historyRepository: SearchHistoryRepositoryStub(),
       debounceDuration: .milliseconds(1)
     )
 
@@ -731,6 +743,7 @@ struct GitHubClientTests {
     let viewModel = SearchViewModel(
       repository: repository,
       favoritesStore: makeFavoritesStore(),
+      historyRepository: SearchHistoryRepositoryStub(),
       debounceDuration: .milliseconds(1)
     )
 
@@ -769,6 +782,7 @@ struct GitHubClientTests {
     let viewModel = SearchViewModel(
       repository: repository,
       favoritesStore: makeFavoritesStore(),
+      historyRepository: SearchHistoryRepositoryStub(),
       debounceDuration: .milliseconds(1)
     )
 
@@ -849,6 +863,7 @@ struct GitHubClientTests {
     let viewModel = SearchViewModel(
       repository: repository,
       favoritesStore: makeFavoritesStore(),
+      historyRepository: SearchHistoryRepositoryStub(),
       debounceDuration: .milliseconds(1)
     )
 
